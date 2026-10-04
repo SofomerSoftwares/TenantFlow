@@ -1,0 +1,6 @@
+{
+  "name": "Tenant List Updater",
+  "description": "Automate tenant list reconciliation, Excel comparison, and change management with automated Tenant Code matching.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
