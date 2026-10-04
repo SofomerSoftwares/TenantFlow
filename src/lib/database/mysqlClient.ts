@@ -509,6 +509,18 @@ export class MySQLService {
       updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : undefined
     };
   }
+
+  public async close(): Promise<void> {
+    if (this.pool) {
+      try {
+        await this.pool.end();
+        this.pool = null;
+        this.isConnected = false;
+      } catch (err) {
+        console.error('Error closing MySQL pool:', err);
+      }
+    }
+  }
 }
 
 export const mySqlService = MySQLService.getInstance();

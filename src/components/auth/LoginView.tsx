@@ -27,6 +27,7 @@ export const LoginView: React.FC = () => {
   const [rememberMe, setRememberMe] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPasswordHint, setShowPasswordHint] = useState(false);
 
   // If already authenticated, redirect to destination or dashboard
   useEffect(() => {
@@ -127,12 +128,17 @@ export const LoginView: React.FC = () => {
                 <label className="block text-xs font-semibold text-slate-700">Password</label>
                 <button
                   type="button"
-                  onClick={() => alert('For this local session, any password is valid for authorized accounts.')}
+                  onClick={() => setShowPasswordHint(!showPasswordHint)}
                   className="text-[11px] font-medium text-indigo-600 hover:text-indigo-700 hover:underline"
                 >
                   Forgot password?
                 </button>
               </div>
+              {showPasswordHint && (
+                <div className="mt-1.5 rounded-lg border border-indigo-100 bg-indigo-50/70 p-2 text-[11px] text-indigo-800">
+                  Authentication is role-based and sessions are simulated locally or via backend. Any password passes for registered enterprise accounts.
+                </div>
+              )}
               <div className="relative mt-1.5">
                 <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input

@@ -111,7 +111,7 @@ export const SettingsView: React.FC = () => {
   };
 
   const handleDownloadSchemaSql = () => {
-    window.open('/api/db/schema.sql', '_blank');
+    handleDownloadFile('/api/db/schema.sql', 'tenant_updater_mysql.sql');
   };
 
   const [renderTab, setRenderTab] = useState<'yaml' | 'docker' | 'script' | 'env'>('yaml');
@@ -192,22 +192,37 @@ echo "===> Build completed successfully!"`;
     setTimeout(() => setCopiedDeploymentCode(null), 2500);
   };
 
-  const handleDownloadFile = (url: string) => {
-    window.open(url, '_blank');
+  const handleDownloadFile = (url: string, filename?: string) => {
+    const link = document.createElement('a');
+    link.href = url;
+    if (filename) {
+      link.download = filename;
+    } else {
+      const parts = url.split('/');
+      link.download = parts[parts.length - 1] || 'download';
+    }
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
+
+  const [showResetConfirmModal, setShowResetConfirmModal] = useState(false);
+  const [resetSuccessMessage, setResetSuccessMessage] = useState(false);
 
   const handleSaveSettings = () => {
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 2000);
   };
 
-  const handleResetDemoData = () => {
-    if (window.confirm('Are you sure you want to reset all tenant records and history back to the initial 100 demo tenants?')) {
-      tenantDb.resetToDefaultDemoData();
-      resetComparisonWorkflow();
-      alert('Tenant database has been reset to 100 demo tenants!');
+  const handleConfirmResetDemoData = () => {
+    tenantDb.resetToDefaultDemoData();
+    resetComparisonWorkflow();
+    setShowResetConfirmModal(false);
+    setResetSuccessMessage(true);
+    setTimeout(() => {
+      setResetSuccessMessage(false);
       navigate('tenants');
-    }
+    }, 1200);
   };
 
   return (
@@ -254,13 +269,21 @@ echo "===> Build completed successfully!"`;
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => handleDownloadFile('/api/deploy/docker-compose.yml')}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50/70 px-3 py-2 text-xs font-semibold text-indigo-700 shadow-xs hover:bg-indigo-100"
+              title="Download docker-compose.yml to run MySQL and phpMyAdmin locally"
+            >
+              <Download className="h-4 w-4 text-indigo-600" />
+              <span>Local docker-compose.yml</span>
+            </button>
             <button
               onClick={handleDownloadSchemaSql}
               className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50"
               title="Download complete MySQL DDL schema file"
             >
-              <Download className="h-4 w-4 text-indigo-600" />
+              <Download className="h-4 w-4 text-slate-600" />
               <span>Export MySQL Schema (.sql)</span>
             </button>
           </div>
@@ -844,13 +867,53 @@ echo "===> Build completed successfully!"`;
               Resets the database to the initial 100 commercial tenant records and pre-seeded history logs.
             </p>
 
-            <button
-              onClick={handleResetDemoData}
-              className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-rose-300 bg-white py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 shadow-xs"
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-              <span>Reset to 100 Demo Tenants</span>
-            </button>
+            {resetSuccessMessage ? (
+              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-center text-xs font-semibold text-emerald-800">
+                Database successfully restored to 100 demo tenants! Redirecting...
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowResetConfirmModal(true)}
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-rose-300 bg-white py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50 shadow-xs"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                <span>Reset to 100 Demo Tenants</span>
+              </button>
+            )}
+
+            {/* In-app Confirmation Modal (Safe for iframe) */}
+            {showResetConfirmModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-xs">
+                <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-xl space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-100 text-rose-600">
+                      <AlertTriangle className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900">Confirm Database Reset</h3>
+                      <p className="text-[11px] text-slate-500">This action will restore demo records.</p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    Are you sure you want to reset all master tenant records and history back to the initial 100 commercial demo tenants? Any uncommitted drafts will be discarded.
+                  </p>
+                  <div className="flex items-center justify-end gap-2 pt-2">
+                    <button
+                      onClick={() => setShowResetConfirmModal(false)}
+                      className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleConfirmResetDemoData}
+                      className="rounded-xl bg-rose-600 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-rose-700"
+                    >
+                      Yes, Reset Database
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

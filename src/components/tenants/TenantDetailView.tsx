@@ -35,6 +35,8 @@ export const TenantDetailView: React.FC = () => {
   // Editing state
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState<Partial<TenantRecord>>({});
+  const [editError, setEditError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
   useEffect(() => {
     if (!activeCode) return;
@@ -65,13 +67,16 @@ export const TenantDetailView: React.FC = () => {
 
   const handleSaveEdit = () => {
     if (!user || !tenant) return;
+    setEditError(null);
     try {
       const updated = tenantDb.updateSingleTenant(tenant.tenantCode, editForm, user);
       setTenant(updated);
       setHistory(tenantDb.getHistory(tenant.tenantCode));
       setIsEditing(false);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err: any) {
-      alert(err.message || 'Error updating tenant');
+      setEditError(err.message || 'Error updating tenant');
     }
   };
 
@@ -111,7 +116,10 @@ export const TenantDetailView: React.FC = () => {
             {isEditing ? (
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setIsEditing(false)}
+                  onClick={() => {
+                    setIsEditing(false);
+                    setEditError(null);
+                  }}
                   className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
                 >
                   <X className="h-3.5 w-3.5" />
@@ -137,6 +145,19 @@ export const TenantDetailView: React.FC = () => {
           </div>
         )}
       </div>
+
+      {saveSuccess && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-800 flex items-center gap-2">
+          <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+          <span>Tenant details saved successfully! Changes recorded in audit trail.</span>
+        </div>
+      )}
+
+      {editError && (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-700">
+          {editError}
+        </div>
+      )}
 
       {/* Main Tenant Details Card */}
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs">

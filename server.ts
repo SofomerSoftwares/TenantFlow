@@ -8,6 +8,14 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
+  // Production Security & Middleware
+  app.disable('x-powered-by');
+  app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    next();
+  });
+
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
@@ -101,6 +109,18 @@ async function startServer() {
     }
   });
 
+  // Download Local MySQL Docker Compose (docker-compose.yml)
+  app.get('/api/deploy/docker-compose.yml', (req, res) => {
+    const composePath = path.resolve(process.cwd(), 'docker-compose.yml');
+    if (fs.existsSync(composePath)) {
+      res.setHeader('Content-Type', 'text/yaml');
+      res.setHeader('Content-Disposition', 'attachment; filename="docker-compose.yml"');
+      res.sendFile(composePath);
+    } else {
+      res.status(404).send('docker-compose.yml not found');
+    }
+  });
+
   // Fetch Tenants from MySQL
   app.get('/api/tenants', async (req, res) => {
     try {
@@ -183,9 +203,21 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Tenant List Updater Server running on http://0.0.0.0:${PORT} (MySQL Database Engine ready)`);
   });
+
+  const handleShutdown = async (signal: string) => {
+    console.log(`\nReceived ${signal}. Shutting down server gracefully...`);
+    server.close(async () => {
+      console.log('HTTP server closed.');
+      await mySqlService.close();
+      process.exit(0);
+    });
+  };
+
+  process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+  process.on('SIGINT', () => handleShutdown('SIGINT'));
 }
 
 startServer().catch((err) => {

@@ -1,0 +1,44 @@
+services:
+  # Local MySQL 8.0 Database Container
+  mysql:
+    image: mysql:8.0
+    container_name: tenant_updater_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: tenant_updater
+      MYSQL_USER: tenant_user
+      MYSQL_PASSWORD: tenant_pass
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      # Auto-executes the schema DDL on first container initialization
+      - ./src/lib/database/mysql_init.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root", "-ppassword"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  # Optional Web-Based Database Management UI (phpMyAdmin)
+  # Access at http://localhost:8081
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    container_name: tenant_updater_phpmyadmin
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: password
+    ports:
+      - "8081:8081"
+
+volumes:
+  mysql_data:
+    driver: local
