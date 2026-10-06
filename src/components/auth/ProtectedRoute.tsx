@@ -15,7 +15,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   allowedRoles,
   requiredPermission
 }) => {
-  const { user, switchRole, hasPermission } = useAuth();
+  const { user, hasPermission } = useAuth();
   const location = useLocation();
 
   if (!user) {
@@ -55,32 +55,30 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
             </div>
             {user.role === 'Viewer' && (
               <div className="text-[11px] text-slate-500">
-                Viewers have read-only access to master tenants, change reports, and logs. They cannot upload files, modify records, or apply reconciliations.
+                Viewers have read-only access to master tenants, catalogs, and history logs. They cannot upload files, modify records, or apply reconciliations.
               </div>
             )}
             {user.role === 'Staff' && (
               <div className="text-[11px] text-slate-500">
-                Staff can upload, compare, review, and export files, but cannot commit changes directly to the master database without Administrator approval.
+                Staff can upload, compare, review, and export files, but cannot commit changes directly to the master registry without Administrator approval.
               </div>
             )}
           </div>
 
           <div className="mt-6 flex flex-col gap-2.5">
-            {/* Quick Switch Button for testing */}
-            <button
-              onClick={() => switchRole('Admin')}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 py-2.5 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700"
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-              <span>Switch to Administrator Role (Test Mode)</span>
-            </button>
-
             <Link
               to="/dashboard"
-              className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-indigo-600 py-2.5 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
               <span>Return to Dashboard</span>
+            </Link>
+
+            <Link
+              to="/profile"
+              className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              <span>View Account Profile & Assigned Role</span>
             </Link>
           </div>
         </div>

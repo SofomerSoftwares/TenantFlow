@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Users,
   CheckCircle2,
@@ -14,7 +14,7 @@ import {
   History,
   ShieldCheck,
   Building2,
-  Sparkles
+  FileBarChart
 } from 'lucide-react';
 import { useComparison } from '@/src/context/ComparisonContext';
 import { tenantDb } from '@/src/lib/database/tenantStore';
@@ -22,34 +22,51 @@ import { TenantRecord, UploadSession } from '@/src/types/tenant';
 import { exportUpdatedMasterExcel } from '@/src/lib/excel/excelExporter';
 
 export const DashboardView: React.FC = () => {
-  const { navigate, loadDemoComparison, summary, comparisonItems } = useComparison();
+  const { navigate, summary, comparisonItems } = useComparison();
   const [tenants, setTenants] = useState<TenantRecord[]>([]);
   const [sessions, setSessions] = useState<UploadSession[]>([]);
-  const [lastUpdateDate, setLastUpdateDate] = useState<string>('October 2, 2026');
+  const [lastUpdateDate, setLastUpdateDate] = useState<string>('No updates yet');
 
   useEffect(() => {
     const list = tenantDb.getTenants();
     setTenants(list);
     setSessions(tenantDb.getSessions());
     const rawDate = tenantDb.getLastUpdateDate();
-    try {
-      const d = new Date(rawDate);
-      if (!isNaN(d.getTime())) {
-        setLastUpdateDate(d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }));
+    if (rawDate) {
+      try {
+        const d = new Date(rawDate);
+        if (!isNaN(d.getTime())) {
+          setLastUpdateDate(d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }));
+        }
+      } catch {
+        setLastUpdateDate(rawDate);
       }
-    } catch {
-      setLastUpdateDate('October 2, 2026');
+    } else {
+      setLastUpdateDate('No updates recorded yet');
     }
   }, []);
 
   const totalTenants = tenants.length;
-  const activeTenants = tenants.filter(t => t.status.toLowerCase() === 'active').length;
-  const inactiveTenants = tenants.filter(t => t.status.toLowerCase() === 'inactive' || t.status.toLowerCase() === 'vacant').length;
+  const activeTenants = tenants.filter(t => (t.work_status || t.status || '').toLowerCase() === 'active').length;
+  const inactiveTenants = tenants.filter(t => {
+    const s = (t.work_status || t.status || '').toLowerCase();
+    return s === 'inactive' || s === 'vacant';
+  }).length;
 
-  // Recent reconciliation stats or default preview
-  const newCount = summary ? summary.newCount : 24;
-  const updatedCount = summary ? summary.updatedCount : 87;
-  const missingCount = summary ? summary.missingCount : 19;
+  // Real reconciliation summary stats (no fake default numbers)
+  const newCount = summary ? summary.newCount : 0;
+  const updatedCount = summary ? summary.updatedCount : 0;
+  const missingCount = summary ? summary.missingCount : 0;
+
+  // Dynamic property / sub-city breakdown from actual master records
+  const propertyBreakdown = useMemo(() => {
+    const counts: Record<string, number> = {};
+    tenants.forEach((t) => {
+      const location = t.sub_city || t.branch || 'Unassigned';
+      counts[location] = (counts[location] || 0) + 1;
+    });
+    return Object.entries(counts).slice(0, 5);
+  }, [tenants]);
 
   return (
     <div className="space-y-6">
@@ -72,20 +89,17 @@ export const DashboardView: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2.5">
             <button
               onClick={() => navigate('upload')}
-              className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white shadow-xs transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+              className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-xs font-semibold text-white shadow-xs transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
             >
               <Upload className="h-4 w-4" />
               <span>Upload Tenant List</span>
             </button>
             <button
-              onClick={() => {
-                loadDemoComparison();
-                navigate('compare');
-              }}
+              onClick={() => navigate('reports')}
               className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50"
             >
-              <Sparkles className="h-4 w-4 text-indigo-600" />
-              <span>Run Demo Reconciliation</span>
+              <FileBarChart className="h-4 w-4 text-indigo-600" />
+              <span>FHC Report (ቅጽ - 01)</span>
             </button>
           </div>
         </div>
@@ -102,7 +116,7 @@ export const DashboardView: React.FC = () => {
               <div className="mt-2 text-2xl font-bold tracking-tight text-slate-900">
                 {totalTenants.toLocaleString()}
               </div>
-              <div className="mt-1 text-[11px] text-slate-400">Master database</div>
+              <div className="mt-1 text-[11px] text-slate-400">Master registry</div>
             </div>
 
             {/* Active Tenants */}
@@ -230,7 +244,7 @@ export const DashboardView: React.FC = () => {
 
         <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
           {[
-            { step: '1', title: 'Upload Master', desc: 'Current database or existing master Excel file' },
+            { step: '1', title: 'Upload Master', desc: 'Current master list or existing master Excel file' },
             { step: '2', title: 'Upload New File', desc: 'Latest file downloaded from external property system' },
             { step: '3', title: 'Tenant Code Match', desc: 'Auto-detects code columns & uses Maps for O(n) lookups' },
             { step: '4', title: 'Detect Changes', desc: 'Flags New, Updated fields, Unchanged & Missing' },
@@ -316,31 +330,33 @@ export const DashboardView: React.FC = () => {
         <div className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-6 shadow-xs">
           <div>
             <h2 className="text-base font-bold text-slate-900">Current Master Tenant List</h2>
-            <p className="text-xs text-slate-500">Live database state</p>
+            <p className="text-xs text-slate-500">Live registry state</p>
 
             <div className="mt-4 space-y-3">
               <div className="rounded-xl bg-slate-50 p-3.5">
                 <div className="text-xs font-medium text-slate-500">Total Registered Tenants</div>
                 <div className="text-xl font-bold text-slate-900">{totalTenants}</div>
                 <div className="mt-1 text-[11px] text-slate-400">
-                  Spread across 5 prime commercial properties
+                  {propertyBreakdown.length > 0
+                    ? `Spread across ${propertyBreakdown.length} sub-cities/branches`
+                    : 'Awaiting master spreadsheet upload'}
                 </div>
               </div>
 
-              <div className="rounded-xl border border-slate-200 p-3.5 text-xs text-slate-600 space-y-1">
-                <div className="flex justify-between">
-                  <span>Grand Central Plaza</span>
-                  <span className="font-semibold text-slate-900">22 tenants</span>
+              {propertyBreakdown.length > 0 ? (
+                <div className="rounded-xl border border-slate-200 p-3.5 text-xs text-slate-600 space-y-1.5">
+                  {propertyBreakdown.map(([loc, count]) => (
+                    <div key={loc} className="flex justify-between items-center">
+                      <span className="truncate max-w-[150px] font-medium text-slate-700">{loc}</span>
+                      <span className="font-semibold text-slate-900">{count} {count === 1 ? 'record' : 'records'}</span>
+                    </div>
+                  ))}
                 </div>
-                <div className="flex justify-between">
-                  <span>Metro Tech Center</span>
-                  <span className="font-semibold text-slate-900">20 tenants</span>
+              ) : (
+                <div className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-xs text-slate-400">
+                  No property records loaded yet.
                 </div>
-                <div className="flex justify-between">
-                  <span>Westside Galleria</span>
-                  <span className="font-semibold text-slate-900">19 tenants</span>
-                </div>
-              </div>
+              )}
             </div>
           </div>
 

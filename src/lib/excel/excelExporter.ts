@@ -11,27 +11,49 @@ function downloadWorkbook(workbook: XLSX.WorkBook, fileName: string) {
 
 export function exportUpdatedMasterExcel(
   updatedTenants: TenantRecord[],
-  fileNamePrefix: string = 'Tenant_List_Updated'
+  fileNamePrefix: string = 'Property_Registry_Export'
 ) {
   const dateStr = new Date().toISOString().split('T')[0];
   const fileName = `${fileNamePrefix}_${dateStr}.xlsx`;
 
-  // Determine headers preserving original or comprehensive order
+  // Determine headers preserving complete property registry order
   const dataRows: Record<string, any>[] = updatedTenants.map((t) => {
-    // Lead with clean standard tenant headers
     const row: Record<string, any> = {
-      'Tenant Code': t.tenantCode,
-      'Tenant Name': t.tenantName,
-      'Unit': t.unit,
-      'Status': t.status,
-      'Branch': t.branch || '',
-      'Floor': t.floor || '',
-      'Phone': t.phone || '',
-      'Email': t.email || '',
-      'Rent': t.rent || '',
-      'Contract Start': t.contractStart || '',
-      'Contract End': t.contractEnd || '',
-      'Category': t.category || ''
+      'መለያ (Identifier)': t.identifier_code || t.tenantCode,
+      'ከተማ (City)': t.city || 'Addis Ababa',
+      'ክ/ከተማ (Sub-City)': t.sub_city || t.branch || '',
+      'ወረዳ (Woreda)': t.woreda || '',
+      'ቀበሌ (Kebele)': t.kebele || '',
+      'ቤት ቁጥር (House No.)': t.house_number || t.unit || '',
+      'የኮምፕሌክስ ወ./ቁጥር (Complex No.)': t.complex_no || '',
+      'ማዕረግ (Title)': t.title || '',
+      'የተከራይ ስም (Tenant Name)': t.tenant_name || t.tenantName,
+      'የነዋሪ ስም (Resident Name)': t.resident_name || t.tenant_name || t.tenantName,
+      'ጾታ (Gender)': t.gender || '',
+      'የቤት ታሪካዊ አገልግሎት (Historical Use)': t.historical_use || t.category || '',
+      'ዋና ቤት (Main House)': t.main_house || 'Main',
+      'የመኝታ ክፍል (Bedrooms)': t.bedroom_count || 0,
+      'የመታጠቢያ ክፍል (Bathrooms)': t.bathroom_count || 0,
+      'የኪችን ክፍል (Kitchen)': t.kitchen_count || 0,
+      'የሰርቪስ ቤት (Service Rooms)': t.service_room_count || 0,
+      'ሌላ ክፍል (Other Rooms)': t.other_rooms_count || 0,
+      'ጠቅላላ የክፍል ብዛት (Total Rooms)': t.total_rooms || 0,
+      'የወለል ደረጃ (Floor Level)': t.floor_level || t.floor || '',
+      'የቤቱ ደረጃ (Building Grade)': t.building_grade || '',
+      'የቦታ ደረጃ (Site Grade)': t.site_grade || '',
+      'ብሎክ ቁጥር (Block No.)': t.block_no || '',
+      'ፓርሰል ቁጥር (Parcel No.)': t.parcel_no || '',
+      'ስፋት (Area in m²)': t.area_sqm || '',
+      'የኪራይ መጠን (Rent Amount)': t.rent_amount !== undefined ? t.rent_amount : (t.rent || ''),
+      'የተገነባበት ዓ.ም (Year Built)': t.year_built || '',
+      'የታደሰበት ዓ.ም (Year Renovated)': t.year_renovated || '',
+      'የይዞታ ዓይነት/ሁኔታ (Tenure Type)': t.tenure_type || '',
+      'የስራ ዓይነት/ሁኔታ (Work Status)': t.work_status || t.status || '',
+      'X COORDINATE': t.x_coordinate || '',
+      'Y COORDINATE': t.y_coordinate || '',
+      'የቤቱ መገኛ (Location)': t.house_location || '',
+      'Mobile (ስልክ)': t.mobile_phone || t.phone || '',
+      'Remark (ማስታወሻ)': t.remarks || ''
     };
 
     // Append any extra preserved raw columns
@@ -48,7 +70,7 @@ export function exportUpdatedMasterExcel(
 
   const worksheet = XLSX.utils.json_to_sheet(dataRows);
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'Master Tenants');
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Property Registry');
 
   downloadWorkbook(workbook, fileName);
 }
@@ -206,4 +228,57 @@ export function exportHistoryItemsExcel(history: TenantHistoryItem[]) {
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, 'History Audit');
   downloadWorkbook(workbook, `Audit_History_${dateStr}.xlsx`);
+}
+
+export function exportBlankRegistryTemplateExcel() {
+  const headers = [
+    'መለያ (Identifier)',
+    'ከተማ (City)',
+    'ክ/ከተማ (Sub-City)',
+    'ወረዳ (Woreda)',
+    'ቀበሌ (Kebele)',
+    'ቤት ቁጥር (House No.)',
+    'የኮምፕሌክስ ወ./ቁጥር (Complex No.)',
+    'ማዕረግ (Title)',
+    'የተከራይ ስም (Tenant Name)',
+    'የነዋሪ ስም (Resident Name)',
+    'ጾታ (Gender)',
+    'የቤት ታሪካዊ አገልግሎት (Historical Use)',
+    'ዋና ቤት (Main House)',
+    'የመኝታ ክፍል (Bedrooms)',
+    'የመታጠቢያ ክፍል (Bathrooms)',
+    'የኪችን ክፍል (Kitchen)',
+    'የሰርቪስ ቤት (Service Rooms)',
+    'ሌላ ክፍል (Other Rooms)',
+    'ጠቅላላ የክፍል ብዛት (Total Rooms)',
+    'የወለል ደረጃ (Floor Level)',
+    'የቤቱ ደረጃ (Building Grade)',
+    'የቦታ ደረጃ (Site Grade)',
+    'ብሎክ ቁጥር (Block No.)',
+    'ፓርሰል ቁጥር (Parcel No.)',
+    'ስፋት (Area in m²)',
+    'የኪራይ መጠን (Rent Amount)',
+    'የተገነባበት ዓ.ም (Year Built)',
+    'የታደሰበት ዓ.ም (Year Renovated)',
+    'የይዞታ ዓይነት/ሁኔታ (Tenure Type)',
+    'የስራ ዓይነት/ሁኔታ (Work Status)',
+    'X COORDINATE',
+    'Y COORDINATE',
+    'የቤቱ መገኛ (Location)',
+    'ስልክ (Mobile Phone)',
+    'ማስታወሻ (Remarks)'
+  ];
+
+  const emptyRow: Record<string, string> = {};
+  headers.forEach((h) => {
+    emptyRow[h] = '';
+  });
+
+  const worksheet = XLSX.utils.json_to_sheet([emptyRow]);
+  // Clear the placeholder row data so sheet only contains headers
+  worksheet['!ref'] = `A1:${XLSX.utils.encode_col(headers.length - 1)}1`;
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Property Registry Template');
+  downloadWorkbook(workbook, 'property_registry_template.xlsx');
 }

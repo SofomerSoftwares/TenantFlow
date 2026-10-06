@@ -1,0 +1,76 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with role and organizational station attributes",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Firebase Auth UID"
+        },
+        "name": {
+          "type": "string",
+          "description": "Full display name"
+        },
+        "email": {
+          "type": "string",
+          "description": "Official email address"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["Admin", "Staff", "Viewer"],
+          "description": "Role authorization tier"
+        },
+        "avatar": {
+          "type": "string",
+          "description": "Monogram avatar initials"
+        },
+        "avatarColor": {
+          "type": "string",
+          "description": "Avatar accent color class"
+        },
+        "jobTitle": {
+          "type": "string",
+          "description": "Official position title"
+        },
+        "department": {
+          "type": "string",
+          "description": "Directorate or department"
+        },
+        "branch": {
+          "type": "string",
+          "description": "Sub-city or regional station branch"
+        },
+        "phone": {
+          "type": "string",
+          "description": "Contact phone number"
+        },
+        "bio": {
+          "type": "string",
+          "description": "Professional bio or duties"
+        },
+        "language": {
+          "type": "string",
+          "enum": ["en", "am"],
+          "description": "Language preference"
+        },
+        "joinedDate": {
+          "type": "string",
+          "description": "Date registered"
+        },
+        "lastActive": {
+          "type": "string",
+          "description": "Last activity timestamp"
+        }
+      },
+      "required": ["id", "name", "email", "role"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Private user profiles indexed by Firebase Auth UID"
+    }
+  }
+}

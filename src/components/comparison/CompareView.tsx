@@ -34,11 +34,10 @@ export const CompareView: React.FC = () => {
     newFile,
     applyApprovedChanges,
     appliedSuccessSessionId,
-    loadDemoComparison,
     navigate
   } = useComparison();
 
-  const { user, canApprove, switchRole } = useAuth();
+  const { user, canApprove } = useAuth();
   const [isApplying, setIsApplying] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showAdminRequiredModal, setShowAdminRequiredModal] = useState(false);
@@ -56,16 +55,9 @@ export const CompareView: React.FC = () => {
         <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
           <button
             onClick={() => navigate('upload')}
-            className="rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700"
+            className="rounded-xl bg-indigo-600 px-5 py-2.5 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700"
           >
-            Upload Files
-          </button>
-          <button
-            onClick={loadDemoComparison}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
-          >
-            <Sparkles className="h-4 w-4" />
-            <span>Load Demo Comparison</span>
+            Upload Files to Reconcile
           </button>
         </div>
       </div>
@@ -121,7 +113,7 @@ export const CompareView: React.FC = () => {
               </div>
               <div>
                 <h3 className="text-sm font-bold text-emerald-950">
-                  Update Successfully Applied to Master Database!
+                  Update Successfully Applied to Master Registry!
                 </h3>
                 <p className="mt-1 text-xs text-emerald-800">
                   Batch changes have been committed. History entries created and audit logs recorded. You can now download the updated Excel master or inspect history.
@@ -342,24 +334,14 @@ export const CompareView: React.FC = () => {
               Administrator Approval Required
             </h3>
             <p className="mt-2 text-xs text-slate-600 leading-normal">
-              Your current role (<strong>{user?.role}</strong>) allows comparing datasets and inspecting records. However, committing batch changes to the live Master Database requires an <strong>Administrator</strong>.
+              Your current role (<strong>{user?.role}</strong>) allows comparing datasets and inspecting records. However, committing batch changes to the live Master Registry requires an <strong>Administrator</strong>.
             </p>
             <div className="mt-5 flex flex-col gap-2">
               <button
-                onClick={() => {
-                  switchRole('Admin');
-                  setShowAdminRequiredModal(false);
-                }}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 py-2.5 text-xs font-semibold text-white shadow-xs hover:bg-indigo-700"
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-                <span>Switch to Administrator (Test Mode)</span>
-              </button>
-              <button
                 onClick={() => setShowAdminRequiredModal(false)}
-                className="w-full rounded-xl border border-slate-200 bg-white py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                className="w-full rounded-xl bg-slate-900 py-2.5 text-xs font-semibold text-white shadow-xs hover:bg-slate-800 cursor-pointer"
               >
-                Cancel
+                Close Notice
               </button>
             </div>
           </div>
@@ -372,7 +354,7 @@ export const CompareView: React.FC = () => {
           <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
             <h3 className="text-base font-bold text-slate-900">Confirm Master Update</h3>
             <p className="mt-2 text-xs text-slate-600 leading-normal">
-              You are about to apply changes to the Master Tenant database:
+              You are about to apply changes to the Master Tenant registry:
             </p>
             <div className="mt-3 space-y-1.5 rounded-xl bg-slate-50 p-3 text-xs text-slate-700">
               <div className="flex justify-between">

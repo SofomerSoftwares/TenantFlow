@@ -1,25 +1,25 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   FolderKanban,
   FileSpreadsheet,
   Download,
   Calendar,
   CheckCircle2,
-  Database,
-  ArrowRight,
-  Sparkles
+  ArrowRight
 } from 'lucide-react';
 import { useComparison } from '@/src/context/ComparisonContext';
 import { tenantDb } from '@/src/lib/database/tenantStore';
 import {
-  downloadDemoMasterExcel,
-  downloadDemoNewSystemExcel
-} from '@/src/lib/excel/demoDataGenerator';
-import { exportUpdatedMasterExcel } from '@/src/lib/excel/excelExporter';
+  exportUpdatedMasterExcel,
+  exportBlankRegistryTemplateExcel
+} from '@/src/lib/excel/excelExporter';
 
 export const TenantListsView: React.FC = () => {
-  const { navigate, loadDemoComparison } = useComparison();
+  const { navigate } = useComparison();
   const tenants = tenantDb.getTenants();
+  const lastUpdate = tenantDb.getLastUpdateDate()
+    ? new Date(tenantDb.getLastUpdateDate()!).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+    : 'No updates yet';
 
   return (
     <div className="space-y-6">
@@ -33,7 +33,7 @@ export const TenantListsView: React.FC = () => {
             Tenant Catalogs & Templates
           </h1>
           <p className="mt-1 text-xs text-slate-500">
-            Download standard Excel templates, master database snapshots, and test datasets for reconciliation.
+            Download standard Excel templates and master tenant snapshots for reconciliation and reporting.
           </p>
         </div>
 
@@ -47,13 +47,13 @@ export const TenantListsView: React.FC = () => {
       </div>
 
       {/* Grid of Catalog Cards */}
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {/* Live Master Database */}
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+        {/* Live Master Catalog */}
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
-                <Database className="h-5 w-5" />
+                <FolderKanban className="h-5 w-5" />
               </div>
               <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200/60">
                 Live Version
@@ -76,7 +76,7 @@ export const TenantListsView: React.FC = () => {
               </div>
               <div className="flex justify-between">
                 <span>Last Updated:</span>
-                <span className="text-slate-700">October 2, 2026</span>
+                <span className="text-slate-700">{lastUpdate}</span>
               </div>
             </div>
           </div>
@@ -87,7 +87,7 @@ export const TenantListsView: React.FC = () => {
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-2.5 text-xs font-semibold text-white shadow-xs hover:bg-emerald-700"
             >
               <Download className="h-4 w-4" />
-              <span>Download Live Master</span>
+              <span>Download Live Master ({tenants.length})</span>
             </button>
             <button
               onClick={() => navigate('upload')}
@@ -99,7 +99,7 @@ export const TenantListsView: React.FC = () => {
           </div>
         </div>
 
-        {/* Demo 100 Master Sample */}
+        {/* Clean Standard Master Template */}
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between">
@@ -107,93 +107,38 @@ export const TenantListsView: React.FC = () => {
                 <FileSpreadsheet className="h-5 w-5" />
               </div>
               <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700 border border-indigo-200/60">
-                Baseline Sample
+                Standard Template
               </span>
             </div>
 
-            <h3 className="mt-4 text-base font-bold text-slate-900">Sample Master File</h3>
+            <h3 className="mt-4 text-base font-bold text-slate-900">Blank Registry Template</h3>
             <p className="mt-1 text-xs text-slate-500">
-              Pre-built sample spreadsheet containing 100 commercial leases ready to be used as Step 1 upload.
+              Clean spreadsheet template configured with the full 35 official property registry columns for real data entry.
             </p>
 
             <div className="mt-4 space-y-1.5 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
               <div className="flex justify-between">
                 <span>File Name:</span>
-                <span className="font-mono text-slate-700">tenant_master_sample.xlsx</span>
+                <span className="font-mono text-slate-700">property_registry_template.xlsx</span>
               </div>
               <div className="flex justify-between">
                 <span>Columns:</span>
-                <span className="text-slate-700">14 columns</span>
+                <span className="text-slate-700">35 columns (Bilingual)</span>
               </div>
               <div className="flex justify-between">
-                <span>Tenant Codes:</span>
-                <span className="font-mono text-slate-700">T001 - T100</span>
+                <span>Primary Key:</span>
+                <span className="font-mono text-slate-700">መለያ (Identifier)</span>
               </div>
             </div>
           </div>
 
           <div className="mt-6">
             <button
-              onClick={downloadDemoMasterExcel}
+              onClick={exportBlankRegistryTemplateExcel}
               className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white py-2.5 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50"
             >
               <Download className="h-4 w-4 text-slate-500" />
-              <span>Download tenant_master_sample.xlsx</span>
-            </button>
-          </div>
-        </div>
-
-        {/* External System Download Sample */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
-                <Sparkles className="h-5 w-5" />
-              </div>
-              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-200/60">
-                With Realistic Changes
-              </span>
-            </div>
-
-            <h3 className="mt-4 text-base font-bold text-slate-900">External System Export Sample</h3>
-            <p className="mt-1 text-xs text-slate-500">
-              Spreadsheet simulating a fresh download from an external property management system with 12 new tenants, 20 updates, 10 missing, and test edge cases.
-            </p>
-
-            <div className="mt-4 space-y-1.5 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
-              <div className="flex justify-between">
-                <span>File Name:</span>
-                <span className="font-mono text-slate-700">tenant_new_system_sample.xlsx</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Discrepancies:</span>
-                <span className="text-amber-800 font-semibold">12 New, 20 Updated, 10 Missing</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Edge Cases:</span>
-                <span className="text-slate-700">2 Duplicates, 2 Errors</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-6 space-y-2">
-            <button
-              onClick={downloadDemoNewSystemExcel}
-              className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white py-2.5 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50"
-            >
-              <Download className="h-4 w-4 text-slate-500" />
-              <span>Download tenant_new_system_sample.xlsx</span>
-            </button>
-
-            <button
-              onClick={() => {
-                loadDemoComparison();
-                navigate('compare');
-              }}
-              className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-indigo-50 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              <span>Test Reconciliation in 1 Click</span>
+              <span>Download Blank Template (.xlsx)</span>
             </button>
           </div>
         </div>
@@ -201,3 +146,5 @@ export const TenantListsView: React.FC = () => {
     </div>
   );
 };
+
+export default TenantListsView;

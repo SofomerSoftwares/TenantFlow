@@ -147,7 +147,7 @@ export const HistoryView: React.FC = () => {
                         onClick={() => navigate('reports')}
                         className="text-xs font-semibold text-indigo-600 hover:text-indigo-800"
                       >
-                        Inspect detailed field audit logs in Reports →
+                        View Federal Housing Corporation Form 01 Report →
                       </button>
                     </div>
                   </div>

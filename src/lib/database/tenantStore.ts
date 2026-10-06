@@ -7,7 +7,6 @@ import {
   ComparisonSummary,
   User
 } from '@/src/types/tenant';
-import { generate100MasterTenants } from '../excel/demoDataGenerator';
 
 const STORAGE_KEYS = {
   TENANTS: 'tlu_tenants_v1',
@@ -18,14 +17,30 @@ const STORAGE_KEYS = {
   LAST_UPDATE: 'tlu_last_update_v1'
 };
 
+export type TenantChangeListener = (tenants: TenantRecord[]) => void;
+
 export class TenantDatabase {
   private static instance: TenantDatabase;
+  private listeners: TenantChangeListener[] = [];
 
   public static getInstance(): TenantDatabase {
     if (!TenantDatabase.instance) {
       TenantDatabase.instance = new TenantDatabase();
     }
     return TenantDatabase.instance;
+  }
+
+  public subscribe(listener: TenantChangeListener): () => void {
+    this.listeners.push(listener);
+    return () => {
+      this.listeners = this.listeners.filter(l => l !== listener);
+    };
+  }
+
+  private notify(tenants: TenantRecord[]) {
+    this.listeners.forEach(l => {
+      try { l(tenants); } catch (e) { console.error('Tenant listener error:', e); }
+    });
   }
 
   constructor() {
@@ -35,78 +50,73 @@ export class TenantDatabase {
   private initializeIfEmpty() {
     if (typeof window === 'undefined') return;
 
+    // Purge local database data as requested by user
+    const purgeDone = localStorage.getItem('tlu_local_db_purged_flag_v8');
+    if (!purgeDone) {
+      this.clearAllData();
+      localStorage.setItem('tlu_local_db_purged_flag_v8', 'true');
+      return;
+    }
+
     const existing = localStorage.getItem(STORAGE_KEYS.TENANTS);
     if (!existing) {
-      this.resetToDefaultDemoData();
+      this.clearAllData();
+      return;
+    }
+
+    // Purge legacy mock demo data or auto-generated batches if previously loaded
+    try {
+      const parsed = JSON.parse(existing);
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        return;
+      }
+      const isLegacyDemo = parsed.some((t: any) =>
+        t.tenantCode?.startsWith('T0') ||
+        t.tenantName === 'Apex Global Logistics' ||
+        t.identifier_code?.startsWith('ETH-AA-B01') ||
+        t.identifier_code?.startsWith('ETH-FHC-B1-') ||
+        t.identifier_code?.startsWith('ETH-AA-')
+      );
+      if (isLegacyDemo) {
+        this.clearAllData();
+      }
+    } catch {
+      this.clearAllData();
+    }
+  }
+
+  public clearAllData() {
+    if (typeof window === 'undefined') return;
+    localStorage.removeItem(STORAGE_KEYS.TENANTS);
+    localStorage.removeItem(STORAGE_KEYS.SESSIONS);
+    localStorage.removeItem(STORAGE_KEYS.HISTORY);
+    localStorage.removeItem(STORAGE_KEYS.AUDIT_LOGS);
+    localStorage.removeItem('tlu_form01_report_v1');
+    localStorage.removeItem('tlu_form02_report_v1');
+    localStorage.removeItem('tlu_form03_report_v1');
+    localStorage.removeItem('tlu_settings_v1');
+    localStorage.setItem(STORAGE_KEYS.TENANTS, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.SESSIONS, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify([]));
+    localStorage.setItem(STORAGE_KEYS.LAST_UPDATE, new Date().toISOString());
+    this.notify([]);
+  }
+
+  public clearDatabase(user?: User) {
+    this.clearAllData();
+    if (user) {
+      this.addAuditLog(
+        'Master Records Purged',
+        'All master property and tenant records, sessions, and histories have been cleared.',
+        user
+      );
     }
   }
 
   public resetToDefaultDemoData() {
-    const defaultTenants = generate100MasterTenants();
-    localStorage.setItem(STORAGE_KEYS.TENANTS, JSON.stringify(defaultTenants));
-
-    // Seed realistic initial audit log and history
-    const initialSession: UploadSession = {
-      id: 'sess-demo-initial',
-      createdAt: '2026-09-15T09:30:00Z',
-      masterFileName: 'tenant_master_v1.xlsx',
-      newFileName: 'system_sync_sep2026.xlsx',
-      appliedAt: '2026-09-15T10:00:00Z',
-      appliedBy: 'Admin User',
-      status: 'applied',
-      summary: {
-        totalMaster: 95,
-        totalNew: 100,
-        newCount: 5,
-        updatedCount: 12,
-        unchangedCount: 83,
-        missingCount: 0,
-        duplicateCount: 0,
-        errorCount: 0
-      }
-    };
-    localStorage.setItem(STORAGE_KEYS.SESSIONS, JSON.stringify([initialSession]));
-
-    const sampleHistory: TenantHistoryItem[] = [
-      {
-        id: 'hist-1',
-        tenantCode: 'T001',
-        tenantName: 'Apex Global Logistics',
-        field: 'Unit',
-        oldValue: 'A-100',
-        newValue: 'A-101',
-        changeType: 'UPDATED',
-        updatedBy: 'Admin User',
-        updatedDate: '2026-09-15',
-        sessionId: 'sess-demo-initial'
-      },
-      {
-        id: 'hist-2',
-        tenantCode: 'T003',
-        tenantName: 'Crestview Capital',
-        field: 'Rent',
-        oldValue: '2860',
-        newValue: '3100',
-        changeType: 'UPDATED',
-        updatedBy: 'Admin User',
-        updatedDate: '2026-09-15',
-        sessionId: 'sess-demo-initial'
-      }
-    ];
-    localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(sampleHistory));
-
-    const initialAudit: AuditLog[] = [
-      {
-        id: 'audit-1',
-        action: 'System Seeded',
-        details: 'Initial master database provisioned with 100 commercial tenant records.',
-        userName: 'System Administrator',
-        userRole: 'Admin',
-        timestamp: '2026-09-15T09:00:00Z'
-      }
-    ];
-    localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(initialAudit));
-    localStorage.setItem(STORAGE_KEYS.LAST_UPDATE, '2026-09-15T10:00:00Z');
+    // Alias to clearDatabase for backward compatibility without loading sample data
+    this.clearAllData();
   }
 
   // --- Tenants CRUD ---
@@ -130,6 +140,7 @@ export class TenantDatabase {
     if (typeof window === 'undefined') return;
     localStorage.setItem(STORAGE_KEYS.TENANTS, JSON.stringify(tenants));
     localStorage.setItem(STORAGE_KEYS.LAST_UPDATE, new Date().toISOString());
+    this.notify(tenants);
   }
 
   public updateSingleTenant(code: string, updates: Partial<TenantRecord>, user: User): TenantRecord {
@@ -143,6 +154,23 @@ export class TenantDatabase {
     const updated: TenantRecord = {
       ...current,
       ...updates,
+      identifier_code: updates.identifier_code || current.identifier_code || current.tenantCode,
+      tenant_name: updates.tenant_name || updates.tenantName || current.tenant_name || current.tenantName,
+      resident_name: updates.resident_name || current.resident_name,
+      house_number: updates.house_number || updates.unit || current.house_number || current.unit,
+      sub_city: updates.sub_city || updates.branch || current.sub_city || current.branch,
+      floor_level: updates.floor_level || updates.floor || current.floor_level || current.floor,
+      mobile_phone: updates.mobile_phone || updates.phone || current.mobile_phone || current.phone,
+      rent_amount: updates.rent_amount !== undefined ? Number(updates.rent_amount) : (updates.rent !== undefined ? Number(updates.rent) : current.rent_amount),
+      historical_use: updates.historical_use || updates.category || current.historical_use || current.category,
+      work_status: updates.work_status || updates.status || current.work_status || current.status,
+      tenantCode: updates.identifier_code || current.identifier_code || current.tenantCode,
+      tenantName: updates.tenant_name || updates.tenantName || current.tenant_name || current.tenantName,
+      unit: updates.house_number || updates.unit || current.house_number || current.unit,
+      branch: updates.sub_city || updates.branch || current.sub_city || current.branch,
+      floor: updates.floor_level || updates.floor || current.floor_level || current.floor,
+      phone: updates.mobile_phone || updates.phone || current.mobile_phone || current.phone,
+      rent: updates.rent_amount !== undefined ? Number(updates.rent_amount) : (updates.rent !== undefined ? Number(updates.rent) : current.rent),
       updatedAt: new Date().toISOString()
     };
     list[idx] = updated;
@@ -380,9 +408,9 @@ export class TenantDatabase {
     localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify([log, ...logs.slice(0, 99)]));
   }
 
-  public getLastUpdateDate(): string {
-    if (typeof window === 'undefined') return 'October 2, 2026';
-    return localStorage.getItem(STORAGE_KEYS.LAST_UPDATE) || new Date().toISOString();
+  public getLastUpdateDate(): string | null {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem(STORAGE_KEYS.LAST_UPDATE);
   }
 }
 

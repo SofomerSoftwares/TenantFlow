@@ -10,6 +10,7 @@ import {
   FileBarChart,
   History,
   Settings,
+  User as UserIcon,
   Sparkles,
   ChevronRight,
   Lock,
@@ -75,7 +76,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onCloseMobile })
     },
     {
       path: '/reports',
-      label: 'Change Reports',
+      label: 'FHC Reports (ቅጽ 01, 02, 03)',
       icon: FileBarChart
     },
     {
@@ -88,6 +89,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onCloseMobile })
       label: 'Settings & Rules',
       icon: Settings,
       requiredRoles: ['Admin']
+    },
+    {
+      path: '/profile',
+      label: 'User Profiles',
+      icon: UserIcon
     }
   ];
 
@@ -196,32 +202,32 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onCloseMobile })
           {/* User Role Card & Scope */}
           <div className="pt-4 border-t border-slate-100 space-y-2">
             {user && (
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs">
+              <Link
+                to="/profile"
+                onClick={onCloseMobile}
+                className="group block rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs transition hover:border-indigo-300 hover:bg-indigo-50/30"
+              >
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Shield className="h-4 w-4 text-indigo-600" />
-                    <span className="font-bold text-slate-900">{user.role} Role</span>
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-bold text-white shadow-2xs ${
+                        user.avatarColor || 'bg-indigo-600'
+                      }`}
+                    >
+                      {user.avatar || user.name.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div className="min-w-0 text-left">
+                      <div className="font-bold text-slate-900 group-hover:text-indigo-600 transition truncate max-w-[120px]">
+                        {user.name}
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-normal truncate">
+                        {user.role} · View Profile
+                      </div>
+                    </div>
                   </div>
-                  <span
-                    className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
-                      user.role === 'Admin'
-                        ? 'bg-indigo-100 text-indigo-800'
-                        : user.role === 'Staff'
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : 'bg-slate-200 text-slate-700'
-                    }`}
-                  >
-                    {user.role === 'Admin' ? 'Full Access' : user.role === 'Staff' ? 'Operational' : 'Read Only'}
-                  </span>
+                  <ChevronRight className="h-4 w-4 text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-0.5 transition" />
                 </div>
-                <div className="mt-1 text-[11px] text-slate-500 leading-tight">
-                  {user.role === 'Admin'
-                    ? 'Can approve batches, manage master database, edit settings, and resolve discrepancies.'
-                    : user.role === 'Staff'
-                    ? 'Can upload, compare, review, and export. Approval requires Administrator.'
-                    : 'Read-only access to tenant lists, change history, and exportable reports.'}
-                </div>
-              </div>
+              </Link>
             )}
 
             <div className="rounded-lg bg-slate-50/60 p-2.5 text-[11px] text-slate-500 flex items-center justify-between">
