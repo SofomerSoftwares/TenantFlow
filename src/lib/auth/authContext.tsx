@@ -355,9 +355,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Firebase Email/Password Sign-In
   const loginWithEmail = async (email: string, password: string): Promise<void> => {
-    const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
-    const fbUser = cred.user;
-    setFirebaseUser(fbUser);
+    try {
+      const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+      const fbUser = cred.user;
+      setFirebaseUser(fbUser);
+    } catch (err: any) {
+      if (err?.code === 'auth/operation-not-allowed' || err?.message?.includes('operation-not-allowed')) {
+        const enhancedError = new Error(
+          'Email/Password sign-in is not enabled in Firebase Console. Please use "Continue with Google" (configured by default) or enable Email/Password under Authentication > Sign-in method in Firebase Console.'
+        );
+        (enhancedError as any).code = 'auth/operation-not-allowed';
+        throw enhancedError;
+      }
+      throw err;
+    }
   };
 
   // Firebase Email/Password Sign-Up (Self-registration defaults to Staff; Admin role assigned by Admin)
@@ -368,7 +379,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     department: string = 'Property Administration Directorate',
     branch: string = 'Head Office - Addis Ababa'
   ): Promise<void> => {
-    const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
+    let cred;
+    try {
+      cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
+    } catch (err: any) {
+      if (err?.code === 'auth/operation-not-allowed' || err?.message?.includes('operation-not-allowed')) {
+        const enhancedError = new Error(
+          'Email/Password sign-up is not enabled in Firebase Console. Please use "Continue with Google" (configured by default) or enable Email/Password under Authentication > Sign-in method in Firebase Console.'
+        );
+        (enhancedError as any).code = 'auth/operation-not-allowed';
+        throw enhancedError;
+      }
+      throw err;
+    }
     const fbUser = cred.user;
 
     await updateFbProfile(fbUser, { displayName: name });
@@ -417,14 +440,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Firebase Google Sign-In
   const loginWithGoogle = async (): Promise<void> => {
-    const cred = await signInWithPopup(auth, googleProvider);
-    const fbUser = cred.user;
-    setFirebaseUser(fbUser);
+    try {
+      const cred = await signInWithPopup(auth, googleProvider);
+      const fbUser = cred.user;
+      setFirebaseUser(fbUser);
+    } catch (err: any) {
+      if (err?.code === 'auth/unauthorized-domain' || err?.message?.includes('unauthorized-domain')) {
+        const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
+        const enhancedError = new Error(
+          `Domain "${hostname}" is not authorized for Google Sign-In in Firebase project chrome-acumen-671nt. Add it to Firebase Console > Authentication > Settings > Authorized Domains, or sign in using Quick Admin access.`
+        );
+        (enhancedError as any).code = 'auth/unauthorized-domain';
+        (enhancedError as any).hostname = hostname;
+        throw enhancedError;
+      }
+      throw err;
+    }
   };
 
   // Firebase Password Reset Email
   const sendPasswordReset = async (email: string): Promise<void> => {
-    await sendPasswordResetEmail(auth, email.trim());
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+    } catch (err: any) {
+      if (err?.code === 'auth/operation-not-allowed' || err?.message?.includes('operation-not-allowed')) {
+        const enhancedError = new Error(
+          'Email/Password provider is not enabled in Firebase Console. Please enable Email/Password in Firebase Console to send password resets.'
+        );
+        (enhancedError as any).code = 'auth/operation-not-allowed';
+        throw enhancedError;
+      }
+      throw err;
+    }
   };
 
   // Fast Login / Preset Login (Simulated / Testing compatibility)
