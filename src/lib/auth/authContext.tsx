@@ -11,6 +11,7 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { auth, db, googleProvider } from '@/src/lib/firebase/firebase';
+import { handleFirestoreError, OperationType } from '@/src/lib/firebase/firestoreErrors';
 import { User, UserRole } from '@/src/types/tenant';
 import { tenantDb } from '@/src/lib/database/tenantStore';
 
@@ -262,12 +263,56 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       setFirebaseUser(fbUser);
       if (fbUser) {
+        const isBootstrapAdminEmail =
+          fbUser.email?.trim().toLowerCase() === 'tesfuniguse18@gmail.com';
+        const assignedRole: UserRole = isBootstrapAdminEmail ? 'Admin' : 'Staff';
+
+        const initials =
+          (fbUser.displayName || fbUser.email || 'US')
+            .trim()
+            .split(' ')
+            .map((part) => part[0])
+            .filter(Boolean)
+            .join('')
+            .slice(0, 2)
+            .toUpperCase() || 'US';
+
+        const fallbackProfile: User = {
+          id: fbUser.uid,
+          name: fbUser.displayName || fbUser.email?.split('@')[0] || (isBootstrapAdminEmail ? 'Admin User' : 'Staff User'),
+          email: fbUser.email || (isBootstrapAdminEmail ? 'tesfuniguse18@gmail.com' : ''),
+          role: assignedRole,
+          avatar: initials,
+          avatarColor: isBootstrapAdminEmail ? 'bg-indigo-600' : 'bg-emerald-600',
+          jobTitle: isBootstrapAdminEmail ? 'System Administrator' : 'Reconciliation Specialist',
+          department: 'Property Administration Directorate',
+          branch: 'Head Office - Addis Ababa',
+          phone: fbUser.phoneNumber || '',
+          bio: isBootstrapAdminEmail
+            ? 'System Administrator with full corporate administrative privileges.'
+            : 'Authenticated team member via Firebase Authentication.',
+          language: 'en',
+          joinedDate: new Date().toISOString().split('T')[0],
+          lastActive: 'Active Now',
+          notifications: {
+            emailAlerts: true,
+            reconciliationCompleted: true,
+            discrepancyAlerts: true,
+            approvalRequests: true
+          }
+        };
+
         try {
           // Fetch user profile from Firestore /users/{uid}
           const userDocRef = doc(db, 'users', fbUser.uid);
-          const docSnap = await getDoc(userDocRef);
+          let docSnap;
+          try {
+            docSnap = await getDoc(userDocRef);
+          } catch (getErr) {
+            handleFirestoreError(getErr, OperationType.GET, `users/${fbUser.uid}`);
+          }
 
-          if (docSnap.exists()) {
+          if (docSnap && docSnap.exists()) {
             const profileData = docSnap.data() as User;
             setUser(profileData);
             setUsersList((prev) => {
@@ -281,45 +326,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             });
           } else {
             // First time sign-in: create Firestore profile document
-            const initials =
-              (fbUser.displayName || fbUser.email || 'US')
-                .trim()
-                .split(' ')
-                .map((part) => part[0])
-                .filter(Boolean)
-                .join('')
-                .slice(0, 2)
-                .toUpperCase() || 'US';
-
-            const newProfile: User = {
-              id: fbUser.uid,
-              name: fbUser.displayName || fbUser.email?.split('@')[0] || 'Authenticated User',
-              email: fbUser.email || '',
-              role: 'Admin', // Default role for testing and admin access
-              avatar: initials,
-              avatarColor: 'bg-indigo-600',
-              jobTitle: 'Reconciliation Specialist',
-              department: 'Property Administration Directorate',
-              branch: 'Head Office - Addis Ababa',
-              phone: fbUser.phoneNumber || '',
-              bio: 'Authenticated team member via Firebase Authentication.',
-              language: 'en',
-              joinedDate: new Date().toISOString().split('T')[0],
-              lastActive: 'Active Now',
-              notifications: {
-                emailAlerts: true,
-                reconciliationCompleted: true,
-                discrepancyAlerts: true,
-                approvalRequests: true
+            try {
+              await setDoc(userDocRef, fallbackProfile);
+            } catch (createErr) {
+              handleFirestoreError(createErr, OperationType.CREATE, `users/${fbUser.uid}`);
+            }
+            setUser(fallbackProfile);
+            setUsersList((prev) => {
+              const idx = prev.findIndex((u) => u.id === fallbackProfile.id);
+              if (idx >= 0) {
+                const updated = [...prev];
+                updated[idx] = fallbackProfile;
+                return updated;
               }
-            };
-
-            await setDoc(userDocRef, newProfile);
-            setUser(newProfile);
-            setUsersList((prev) => [newProfile, ...prev]);
+              return [fallbackProfile, ...prev];
+            });
           }
         } catch (err) {
-          console.error('Error fetching Firestore user profile:', err);
+          // Fallback to local profile gracefully so user session remains usable
+          setUser((prev) => prev || fallbackProfile);
         }
       }
       setAuthLoading(false);
@@ -358,7 +383,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .slice(0, 2)
         .toUpperCase() || 'US';
 
-    const defaultRole: UserRole = 'Staff';
+    const isBootstrapAdminEmail = fbUser.email?.trim().toLowerCase() === 'tesfuniguse18@gmail.com';
+    const defaultRole: UserRole = isBootstrapAdminEmail ? 'Admin' : 'Staff';
 
     const newProfile: User = {
       id: fbUser.uid,

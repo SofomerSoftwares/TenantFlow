@@ -17,13 +17,20 @@ service cloud.firestore {
     }
 
     function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Bootstrapped Admin: User email from runtime
+    function isBootstrapAdmin() {
+      return isSignedIn() && request.auth.token.email == 'tesfuniguse18@gmail.com';
     }
 
     function isAdmin() {
-      return isSignedIn() && (
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Admin'
+      return isBootstrapAdmin() || (
+        isSignedIn() && (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Admin'
+        )
       );
     }
 
@@ -35,17 +42,17 @@ service cloud.firestore {
 
     // User account profiles: System roles managed exclusively by Admin
     match /users/{userId} {
-      allow get: if isSignedIn() && isValidId(userId);
-      allow list: if isSignedIn();
+      allow get: if isSignedIn() && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
 
-      // Self-registration is restricted to Staff or Viewer. Only Admins can provision Admin accounts.
+      // Self-registration: Staff or Viewer for standard users; Admin for Bootstrap Admin or existing Admins
       allow create: if isValidId(userId)
         && request.resource.data.id == userId
         && request.resource.data.keys().hasAll(['id', 'name', 'email', 'role'])
         && request.resource.data.role in ['Admin', 'Staff', 'Viewer']
         && (
-          (isOwner(userId) && request.resource.data.role in ['Staff', 'Viewer']) ||
-          isAdmin()
+          isAdmin() ||
+          (isOwner(userId) && request.resource.data.role in ['Staff', 'Viewer'])
         );
 
       // Only Admins can modify roles. Users can update their own personal info, but role cannot be changed.

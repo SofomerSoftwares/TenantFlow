@@ -1,5 +1,4 @@
 import express from 'express';
-import { createServer as createViteServer } from 'vite';
 import path from 'path';
 
 async function startServer() {
@@ -17,18 +16,42 @@ async function startServer() {
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+  // Health check endpoints for Render Blueprint & container monitors
+  app.get(['/api/health', '/healthz'], (req, res) => {
+    res.status(200).json({
+      status: 'ok',
+      service: 'tenant-list-updater',
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'development',
+    });
+  });
+
   // Mount Vite middleware in development
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);
   } else {
-    // Serve static files in production
-    app.use(express.static(path.resolve(process.cwd(), 'dist')));
+    // Serve static files in production with optimized asset caching
+    const distPath = path.resolve(process.cwd(), 'dist');
+    app.use(
+      express.static(distPath, {
+        maxAge: '1d',
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith('.html')) {
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+          } else if (filePath.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$/)) {
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+          }
+        },
+      })
+    );
     app.get('*', (req, res) => {
-      res.sendFile(path.resolve(process.cwd(), 'dist/index.html'));
+      res.sendFile(path.resolve(distPath, 'index.html'));
     });
   }
 

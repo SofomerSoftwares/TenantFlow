@@ -8,6 +8,7 @@ import {
   Users,
   FolderKanban,
   FileBarChart,
+  FileSpreadsheet,
   History,
   Settings,
   User as UserIcon,
@@ -78,6 +79,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onCloseMobile })
       path: '/reports',
       label: 'FHC Reports (ቅጽ 01, 02, 03)',
       icon: FileBarChart
+    },
+    {
+      path: '/vlookup',
+      label: 'VLOOKUP Automator',
+      icon: FileSpreadsheet,
+      badge: 'Excel',
+      badgeColor: 'bg-emerald-100 text-emerald-800'
     },
     {
       path: '/history',
@@ -230,10 +238,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onCloseMobile })
               </Link>
             )}
 
-            <div className="rounded-lg bg-slate-50/60 p-2.5 text-[11px] text-slate-500 flex items-center justify-between">
-              <span>VLOOKUP Automator</span>
-              <span className="font-mono text-[10px] text-slate-400">v2.4 RBAC</span>
-            </div>
+            <Link
+              to="/vlookup"
+              onClick={onCloseMobile}
+              className="rounded-lg bg-indigo-50/70 hover:bg-indigo-100 p-2.5 text-[11px] text-indigo-700 flex items-center justify-between transition group cursor-pointer border border-indigo-100"
+            >
+              <div className="flex items-center gap-1.5 font-bold">
+                <FileSpreadsheet className="h-3.5 w-3.5 text-indigo-600" />
+                <span>VLOOKUP Automator</span>
+              </div>
+              <span className="font-mono text-[10px] bg-white text-indigo-800 px-1.5 py-0.5 rounded border border-indigo-200 group-hover:bg-indigo-600 group-hover:text-white transition">v2.4 ↗</span>
+            </Link>
           </div>
         </div>
       </aside>

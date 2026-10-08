@@ -329,6 +329,16 @@ export const UploadView: React.FC = () => {
             Upload the Master Property/Tenant File and the Latest External Update File. The reconciliation engine maps columns to the standard <code className="font-mono text-indigo-600">property_registry</code> structure by unique Identifier Code (መለያ).
           </p>
         </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate('vlookup')}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-xs font-semibold text-emerald-800 shadow-2xs hover:bg-emerald-100 transition cursor-pointer"
+          >
+            <FileSpreadsheet className="h-4 w-4 text-emerald-700" />
+            <span>Open VLOOKUP Automator (ቪሉካፕ)</span>
+          </button>
+        </div>
       </div>
 
       {/* Upload Cards Grid */}

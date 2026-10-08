@@ -62,6 +62,10 @@
         "lastActive": {
           "type": "string",
           "description": "Last activity timestamp"
+        },
+        "notifications": {
+          "type": "object",
+          "description": "User notification preferences"
         }
       },
       "required": ["id", "name", "email", "role"]

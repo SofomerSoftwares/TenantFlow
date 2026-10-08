@@ -95,6 +95,13 @@ export const DashboardView: React.FC = () => {
               <span>Upload Tenant List</span>
             </button>
             <button
+              onClick={() => navigate('vlookup')}
+              className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs font-semibold text-emerald-800 shadow-xs transition hover:bg-emerald-100"
+            >
+              <FileSpreadsheet className="h-4 w-4 text-emerald-700" />
+              <span>VLOOKUP Automator (ቪሉካፕ)</span>
+            </button>
+            <button
               onClick={() => navigate('reports')}
               className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 shadow-xs transition hover:bg-slate-50"
             >

@@ -23,6 +23,7 @@ import { ReportsView } from '@/src/components/reports/ReportsView';
 import { HistoryView } from '@/src/components/history/HistoryView';
 import { SettingsView } from '@/src/components/settings/SettingsView';
 import { ProfileView } from '@/src/components/profile/ProfileView';
+import { VlookupView } from '@/src/components/vlookup/VlookupView';
 import { LoginView } from '@/src/components/auth/LoginView';
 import { ProtectedRoute } from '@/src/components/auth/ProtectedRoute';
 import { ChevronRight, Home } from 'lucide-react';
@@ -61,6 +62,7 @@ const AppLayout: React.FC = () => {
       '/tenant-lists': 'Tenant Catalogs',
       '/reports': 'FHC Housing Report (ቅጽ - 01)',
       '/history': 'Update History',
+      '/vlookup': 'VLOOKUP Automator (ቪሉካፕ)',
       '/settings': 'Settings & Rules',
       '/profile': 'User Profile & Team'
     };
@@ -139,6 +141,7 @@ export default function App() {
               <Route path="tenant-lists" element={<TenantListsView />} />
               <Route path="reports" element={<ReportsView />} />
               <Route path="history" element={<HistoryView />} />
+              <Route path="vlookup" element={<VlookupView />} />
               <Route
                 path="settings"
                 element={
