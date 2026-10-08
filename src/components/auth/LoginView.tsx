@@ -15,7 +15,11 @@ import {
   Sparkles,
   AlertCircle,
   Check,
-  X
+  X,
+  ExternalLink,
+  HelpCircle,
+  Copy,
+  Globe
 } from 'lucide-react';
 import { useAuth } from '@/src/lib/auth/authContext';
 import { UserRole } from '@/src/types/tenant';
@@ -26,6 +30,7 @@ export const LoginView: React.FC = () => {
     signUpWithEmail,
     loginWithGoogle,
     sendPasswordReset,
+    login,
     user
   } = useAuth();
 
@@ -41,6 +46,9 @@ export const LoginView: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [providerDisabledNotice, setProviderDisabledNotice] = useState(false);
+  const [unauthorizedDomainNotice, setUnauthorizedDomainNotice] = useState<{ domain: string } | null>(null);
+  const [copiedDomain, setCopiedDomain] = useState(false);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
 
   // Forgot password modal
@@ -57,10 +65,31 @@ export const LoginView: React.FC = () => {
     }
   }, [user, navigate, location]);
 
+  const handleCopyDomain = async (domainToCopy: string) => {
+    try {
+      await navigator.clipboard.writeText(domainToCopy);
+      setCopiedDomain(true);
+      setTimeout(() => setCopiedDomain(false), 2500);
+    } catch {
+      // fallback
+    }
+  };
+
   const parseFirebaseError = (err: any): string => {
     const code = err?.code || '';
+    const message = err?.message || '';
+
+    if (code === 'auth/unauthorized-domain' || message.includes('unauthorized-domain')) {
+      const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'current domain';
+      setUnauthorizedDomainNotice({ domain: currentHost });
+      return `Domain "${currentHost}" is not authorized for Google Sign-In in Firebase project chrome-acumen-671nt. Authorize it in Firebase Console or use Instant Admin Access below.`;
+    }
+    if (code === 'auth/operation-not-allowed' || message.includes('operation-not-allowed')) {
+      setProviderDisabledNotice(true);
+      return 'Firebase Authentication provider disabled: Email/Password sign-in is not yet enabled in the Firebase Console for project chrome-acumen-671nt. Please use "Continue with Google" (enabled by default) or Quick Demo Access below.';
+    }
     if (code === 'auth/user-not-found' || code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
-      return 'Invalid email or password. You can also create a new account or use Quick Demo Sign-In.';
+      return 'Invalid email or password. You can also create a new account, use "Continue with Google", or use Quick Demo Sign-In.';
     }
     if (code === 'auth/email-already-in-use') {
       return 'This email address is already registered. Please sign in instead.';
@@ -74,7 +103,15 @@ export const LoginView: React.FC = () => {
     if (code === 'auth/popup-closed-by-user') {
       return 'Google sign-in popup was cancelled.';
     }
+    if (code === 'auth/popup-blocked') {
+      return 'Google sign-in popup was blocked by browser. Please allow popups or use Quick Demo Access.';
+    }
     return err?.message || 'Authentication error. Please try again.';
+  };
+
+  const handleQuickDemoLogin = (demoRole: UserRole, customEmail?: string) => {
+    login(demoRole, customEmail);
+    navigate('/dashboard', { replace: true });
   };
 
   const handleSignIn = async (e: React.FormEvent) => {
@@ -91,7 +128,6 @@ export const LoginView: React.FC = () => {
     try {
       await loginWithEmail(email.trim(), password);
     } catch (err: any) {
-      // If user doesn't exist in Firebase yet, offer helpful message or fallback
       setError(parseFirebaseError(err));
       setIsLoading(false);
     }
@@ -142,7 +178,8 @@ export const LoginView: React.FC = () => {
     setResetMessage(null);
     try {
       await sendPasswordReset(resetEmail.trim());
-      setResetMessage('Password reset link sent! Please check your inbox.');
+      setSuccessNotice('Password reset link sent! Please check your inbox.');
+      setIsResetModalOpen(false);
     } catch (err: any) {
       setResetMessage(parseFirebaseError(err));
     } finally {
@@ -202,12 +239,157 @@ export const LoginView: React.FC = () => {
             </div>
           </div>
 
-          {error && (
+          {unauthorizedDomainNotice ? (
+            <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50/95 p-4 text-xs text-amber-950 shadow-2xs space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start gap-2.5">
+                  <Globe className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-amber-950 text-sm">Domain Authorization Required</span>
+                      <span className="font-mono text-[10px] bg-amber-200/80 text-amber-900 px-1.5 py-0.5 rounded font-semibold">auth/unauthorized-domain</span>
+                    </div>
+                    <p className="text-[11.5px] text-amber-800 leading-relaxed">
+                      Google OAuth requires this hosting domain to be registered in the <strong>Authorized Domains</strong> whitelist in Firebase Console (<code className="font-mono bg-amber-100 px-1 py-0.5 rounded text-amber-900 font-semibold">chrome-acumen-671nt</code>).
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setUnauthorizedDomainNotice(null)}
+                  className="text-amber-500 hover:text-amber-800 p-1 -mr-1 -mt-1 cursor-pointer"
+                  title="Dismiss notice"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Copy domain box */}
+              <div className="rounded-lg border border-amber-200 bg-white p-3 space-y-1.5">
+                <div className="flex items-center justify-between text-[11px] text-slate-600">
+                  <span className="font-semibold text-slate-700">Domain to register in Firebase:</span>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyDomain(unauthorizedDomainNotice.domain)}
+                    className="inline-flex items-center gap-1 font-bold text-xs text-indigo-600 hover:text-indigo-800 transition cursor-pointer"
+                  >
+                    {copiedDomain ? (
+                      <>
+                        <Check className="h-3.5 w-3.5 text-emerald-600" />
+                        <span className="text-emerald-700">Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-3.5 w-3.5" />
+                        <span>Copy Domain</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                <div className="font-mono text-xs bg-slate-50 border border-slate-200 text-slate-900 px-2.5 py-1.5 rounded-md break-all select-all flex items-center justify-between">
+                  <span>{unauthorizedDomainNotice.domain}</span>
+                </div>
+              </div>
+
+              {/* Instant Access Bypass */}
+              <div className="pt-0.5 space-y-1.5">
+                <span className="text-[11px] font-bold text-amber-950 block">Instant Access (Bypass Domain Check):</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleQuickDemoLogin('Admin', 'tesfuniguse18@gmail.com')}
+                    className="flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 py-2 px-3 text-xs font-bold text-white shadow-2xs hover:bg-indigo-700 transition cursor-pointer"
+                  >
+                    <ShieldCheck className="h-4 w-4" />
+                    <span>Enter as Admin (tesfuniguse18)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleQuickDemoLogin('Staff', 'm.chen@fhc.gov.et')}
+                    className="flex items-center justify-center gap-1.5 rounded-lg border border-amber-300 bg-white py-2 px-3 text-xs font-bold text-amber-900 hover:bg-amber-100/60 transition cursor-pointer"
+                  >
+                    <UserIcon className="h-4 w-4 text-emerald-600" />
+                    <span>Enter as Lead Staff</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Instructions to authorize */}
+              <div className="rounded-lg bg-white/80 border border-amber-200 p-2.5 text-[11px] text-amber-900 space-y-1">
+                <div className="font-semibold text-amber-950 flex items-center justify-between">
+                  <span>How to authorize in Firebase Console:</span>
+                  <a
+                    href="https://console.firebase.google.com/project/chrome-acumen-671nt/authentication/settings"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-indigo-600 hover:text-indigo-800 underline inline-flex items-center gap-1 font-bold"
+                  >
+                    Firebase Auth Settings <ExternalLink className="h-3 w-3" />
+                  </a>
+                </div>
+                <ol className="list-decimal list-inside text-amber-800 text-[10.5px] space-y-0.5 leading-tight">
+                  <li>Open the <strong>Firebase Auth Settings</strong> link above.</li>
+                  <li>Scroll down to the <strong>Authorized domains</strong> section and click <strong>Add domain</strong>.</li>
+                  <li>Paste <code className="font-mono bg-amber-100 px-1 rounded">{unauthorizedDomainNotice.domain}</code> and save.</li>
+                </ol>
+              </div>
+            </div>
+          ) : providerDisabledNotice ? (
+            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-xs text-amber-900 shadow-2xs space-y-2.5">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold text-amber-950 block">Email/Password Sign-In Disabled in Firebase</span>
+                  <p className="mt-0.5 text-[11px] text-amber-800 leading-relaxed">
+                    By default, this Firebase project (<code className="font-mono bg-amber-100 px-1 py-0.2 rounded font-semibold text-amber-900">chrome-acumen-671nt</code>) has only <strong>Google Sign-In</strong> enabled. Choose an option below to proceed:
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-0.5">
+                <button
+                  type="button"
+                  onClick={handleGoogleSignIn}
+                  disabled={isGoogleLoading}
+                  className="flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 py-1.5 px-2.5 text-xs font-bold text-white shadow-2xs hover:bg-indigo-700 transition cursor-pointer"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  <span>{isGoogleLoading ? 'Connecting...' : 'Sign In with Google'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleQuickDemoLogin(email?.toLowerCase() === 'tesfuniguse18@gmail.com' ? 'Admin' : 'Staff', email || undefined)}
+                  className="flex items-center justify-center gap-1.5 rounded-lg border border-amber-300 bg-white py-1.5 px-2.5 text-xs font-bold text-amber-900 hover:bg-amber-100/60 transition cursor-pointer"
+                >
+                  <ShieldCheck className="h-3.5 w-3.5 text-amber-700" />
+                  <span>Use Quick Demo Session</span>
+                </button>
+              </div>
+
+              <div className="rounded-lg bg-white/80 border border-amber-200 p-2 text-[10.5px] text-amber-900 space-y-1">
+                <div className="font-semibold text-amber-950 flex items-center justify-between">
+                  <span>To enable Email/Password permanently:</span>
+                  <a
+                    href="https://console.firebase.google.com/project/chrome-acumen-671nt/authentication/providers"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-indigo-600 hover:text-indigo-800 underline inline-flex items-center gap-0.5 font-bold"
+                  >
+                    Firebase Console <ExternalLink className="h-2.5 w-2.5" />
+                  </a>
+                </div>
+                <p className="text-amber-800 leading-tight">
+                  1. Open the Firebase Console link above &bull; 2. Click <strong>Email/Password</strong> &bull; 3. Turn on <strong>Enable</strong> and click <strong>Save</strong>.
+                </p>
+              </div>
+            </div>
+          ) : error ? (
             <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700 flex items-start gap-2">
               <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
               <span>{error}</span>
             </div>
-          )}
+          ) : null}
 
           {successNotice && (
             <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800 flex items-start gap-2">
@@ -411,6 +593,64 @@ export const LoginView: React.FC = () => {
               </button>
             </form>
           )}
+        </div>
+
+        {/* Quick Demo Access Card */}
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
+              <Sparkles className="h-4 w-4 text-indigo-600" />
+              <span>Instant Role Access (Quick Demo)</span>
+            </div>
+            <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full">
+              No Password Needed
+            </span>
+          </div>
+
+          <p className="text-[11px] text-slate-500 leading-relaxed">
+            Instantly test the application with any pre-configured role to verify Form 01 approvals, VLOOKUP reconciliation, or tenant data:
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-0.5">
+            <button
+              type="button"
+              onClick={() => handleQuickDemoLogin('Admin', 'tesfuniguse18@gmail.com')}
+              className="flex flex-col items-start p-2.5 rounded-xl border border-indigo-100 bg-indigo-50/50 hover:bg-indigo-50 hover:border-indigo-300 transition text-left cursor-pointer group"
+            >
+              <div className="flex items-center justify-between w-full">
+                <span className="text-xs font-bold text-indigo-950">Administrator</span>
+                <Shield className="h-3.5 w-3.5 text-indigo-600" />
+              </div>
+              <span className="text-[10px] text-indigo-700 mt-1 font-medium truncate max-w-full">tesfuniguse18@gmail.com</span>
+              <span className="text-[9.5px] text-slate-500 mt-0.5">Full System Access</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleQuickDemoLogin('Staff', 'm.chen@fhc.gov.et')}
+              className="flex flex-col items-start p-2.5 rounded-xl border border-emerald-100 bg-emerald-50/50 hover:bg-emerald-50 hover:border-emerald-300 transition text-left cursor-pointer group"
+            >
+              <div className="flex items-center justify-between w-full">
+                <span className="text-xs font-bold text-emerald-950">Operations Staff</span>
+                <UserIcon className="h-3.5 w-3.5 text-emerald-600" />
+              </div>
+              <span className="text-[10px] text-emerald-700 mt-1 font-medium truncate max-w-full">Marcus Chen</span>
+              <span className="text-[9.5px] text-slate-500 mt-0.5">Excel & VLOOKUP</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleQuickDemoLogin('Viewer', 'e.rostova@fhc.gov.et')}
+              className="flex flex-col items-start p-2.5 rounded-xl border border-amber-100 bg-amber-50/50 hover:bg-amber-50 hover:border-amber-300 transition text-left cursor-pointer group"
+            >
+              <div className="flex items-center justify-between w-full">
+                <span className="text-xs font-bold text-amber-950">Cadastral Viewer</span>
+                <Eye className="h-3.5 w-3.5 text-amber-600" />
+              </div>
+              <span className="text-[10px] text-amber-700 mt-1 font-medium truncate max-w-full">Elena Rostova</span>
+              <span className="text-[9.5px] text-slate-500 mt-0.5">Audit & Read-Only</span>
+            </button>
+          </div>
         </div>
 
         {/* Security Information Footer */}
