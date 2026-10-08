@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import {
   FileSpreadsheet,
   Search,
@@ -25,7 +25,11 @@ import {
   ChevronDown,
   Info,
   CheckSquare,
-  Square
+  Square,
+  Save,
+  FilePlus,
+  AlertTriangle,
+  X
 } from 'lucide-react';
 import { parseExcelFile } from '@/src/lib/excel/excelParser';
 import { tenantDb } from '@/src/lib/database/tenantStore';
@@ -40,6 +44,7 @@ import {
 import { executeVlookup } from '@/src/lib/vlookup/vlookupEngine';
 import { exportVlookupResultExcel } from '@/src/lib/vlookup/vlookupExcelExporter';
 import { useComparison } from '@/src/context/ComparisonContext';
+import { useAuth } from '@/src/lib/auth/authContext';
 
 // Sample Preset 1: Bank Payment Slips (Payment records needing tenant names, branch & rent check)
 const SAMPLE_BANK_PAYMENTS = [
@@ -62,8 +67,66 @@ const SAMPLE_UTILITY_INSPECTION = [
   { 'Meter_No': 'WTR-AA-1005', 'House_No': 'HN-104', 'Meter_Status': 'Active', 'Kwh_Units': 850 }
 ];
 
+// Fallback Benchmark Master Records
+const FALLBACK_BENCHMARK_ROWS = [
+  { identifier_code: 'ETH-AA-B1-001', tenant_name: 'አቶ አበበ ከበደ', sub_city: 'ቦሌ', house_number: 'HN-101', historical_use: 'መኖሪያ ቤት', rent_amount: 5000, work_status: 'Active' },
+  { identifier_code: 'ETH-AA-B1-002', tenant_name: 'ወ/ሮ ትዕግስት ኃይሌ', sub_city: 'ቦሌ', house_number: 'HN-102', historical_use: 'የድርጅት ቤት', rent_amount: 7500, work_status: 'Active' },
+  { identifier_code: 'ETH-AA-B1-003', tenant_name: 'ዶ/ር ዳዊት ወልዴ', sub_city: 'ቦሌ', house_number: 'HN-103', historical_use: 'መኖሪያ ቤት', rent_amount: 4800, work_status: 'Active' },
+  { identifier_code: 'ETH-AA-B2-015', tenant_name: 'አቶ ካሊድ ዑመር', sub_city: 'ቂርቆስ', house_number: 'HN-215', historical_use: 'የድርጅት ቤት', rent_amount: 12000, work_status: 'Active' },
+  { identifier_code: 'ETH-AA-B3-042', tenant_name: 'ወ/ሪት ሄለን ታደሰ', sub_city: 'አራዳ', house_number: 'HN-342', historical_use: 'መኖሪያ ቤት', rent_amount: 6000, work_status: 'Active' },
+  { identifier_code: 'ETH-AA-B4-088', tenant_name: 'አቶ ሳሙኤል ተፈራ', sub_city: 'ልደታ', house_number: 'HN-488', historical_use: 'የድርጅት ቤት', rent_amount: 9500, work_status: 'Active' }
+];
+
+/**
+ * Intelligent helper to detect the best matching keys between two spreadsheets
+ */
+function detectBestLookupPair(sHeaders: string[], rHeaders: string[]): { sourceKey: string; refKey: string } {
+  const candidateGroups = [
+    ['tenant_code', 'tenantcode', 'identifier_code', 'identifier', 'code', 'መለያ', 'የተከራይ_መለያ'],
+    ['house_no', 'house_number', 'unit', 'unit_no', 'ቤት_ቁጥር', 'ቤት ቁጥር'],
+    ['meter_no', 'meter_number', 'ቆጣሪ_ቁጥር'],
+    ['receipt_no', 'txn_no', 'voucher_no'],
+    ['tenant_name', 'tenantname', 'name', 'resident_name', 'የተከራይ_ስም', 'ስም']
+  ];
+
+  let bestSource = sHeaders[0] || '';
+  let bestRef = rHeaders[0] || '';
+  let found = false;
+
+  for (const group of candidateGroups) {
+    const sMatch = sHeaders.find(sh => {
+      const c = sh.toLowerCase().replace(/[\s\-_]+/g, '');
+      return group.some(g => c.includes(g.replace(/[\s\-_]+/g, '')));
+    });
+    const rMatch = rHeaders.find(rh => {
+      const c = rh.toLowerCase().replace(/[\s\-_]+/g, '');
+      return group.some(g => c.includes(g.replace(/[\s\-_]+/g, '')));
+    });
+
+    if (sMatch && rMatch) {
+      bestSource = sMatch;
+      bestRef = rMatch;
+      found = true;
+      break;
+    } else if (sMatch && !bestSource) {
+      bestSource = sMatch;
+    }
+  }
+
+  if (!found) {
+    const rKey = rHeaders.find(rh => {
+      const c = rh.toLowerCase().replace(/[\s\-_]+/g, '');
+      return c === 'identifiercode' || c === 'tenantcode' || c === 'መለያ' || c === 'housenumber' || c === 'unit';
+    });
+    if (rKey) bestRef = rKey;
+  }
+
+  return { sourceKey: bestSource, refKey: bestRef };
+}
+
 export const VlookupView: React.FC = () => {
   const { newFile } = useComparison();
+  const { user } = useAuth();
 
   // Tables State
   const [sourceData, setSourceData] = useState<{
@@ -85,8 +148,8 @@ export const VlookupView: React.FC = () => {
   }>({
     fileName: 'Live Master Database (ተከራይ ዳታቤዝ)',
     sheetName: 'Master_Registry',
-    headers: [],
-    rows: []
+    headers: Object.keys(FALLBACK_BENCHMARK_ROWS[0]),
+    rows: FALLBACK_BENCHMARK_ROWS
   });
 
   // VLOOKUP Configuration State
@@ -113,45 +176,93 @@ export const VlookupView: React.FC = () => {
   const [copiedFormula, setCopiedFormula] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Enrichment Modal State
+  const [enrichModalOpen, setEnrichModalOpen] = useState(false);
+  const [isEnrichingMaster, setIsEnrichingMaster] = useState(false);
+
   // File Input Refs
   const sourceFileRef = useRef<HTMLInputElement>(null);
   const referenceFileRef = useRef<HTMLInputElement>(null);
 
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  // Immediate Execution Engine
+  const runVlookupNow = useCallback((
+    src = sourceData,
+    ref = referenceData,
+    srcKey = sourceKeyCol,
+    refKey = referenceKeyCol,
+    returnCols = selectedReturnCols,
+    mode = matchMode,
+    na = naHandling,
+    customNa = customNaValue,
+    fType = formulaType
+  ) => {
+    if (!src.rows.length || !ref.rows.length || !srcKey || !refKey || !returnCols.length) {
+      return;
+    }
+
+    setIsExecuting(true);
+    const config: VlookupConfig = {
+      sourceFileName: src.fileName,
+      referenceFileName: ref.fileName,
+      sourceKeyColumn: srcKey,
+      referenceKeyColumn: refKey,
+      returnColumns: returnCols,
+      matchMode: mode,
+      naHandling: na,
+      customNaValue: na === 'custom' ? customNa : undefined,
+      formulaType: fType,
+      referenceSheetName: ref.sheetName || 'Master_Registry'
+    };
+
+    const res = executeVlookup(src.rows, ref.rows, config);
+    setResult(res);
+    setIsExecuting(false);
+  }, [sourceData, referenceData, sourceKeyCol, referenceKeyCol, selectedReturnCols, matchMode, naHandling, customNaValue, formulaType]);
+
   // Load Live Tenants into Reference Table
-  const reloadReferenceFromDatabase = () => {
+  const reloadReferenceFromDatabase = useCallback(() => {
     const tenants = tenantDb.getTenants();
     if (tenants.length > 0) {
       const sample = tenants[0];
       const headers = Object.keys(sample).filter(k => k !== 'rawFields');
-      setReferenceData({
+      const newRef = {
         fileName: `Master Tenant Database (${tenants.length} properties)`,
         sheetName: 'Master_Registry',
         headers,
         rows: tenants
-      });
-      // Auto-set reference key to identifier_code or tenantCode
-      if (headers.includes('identifier_code')) setReferenceKeyCol('identifier_code');
-      else if (headers.includes('tenantCode')) setReferenceKeyCol('tenantCode');
-    } else {
-      // Benchmark fallback if local database has 0 records
-      const fallbackRows = [
-        { identifier_code: 'ETH-AA-B1-001', tenant_name: 'አቶ አበበ ከበደ', sub_city: 'ቦሌ', house_number: 'HN-101', historical_use: 'መኖሪያ ቤት', rent_amount: 5000, work_status: 'Active' },
-        { identifier_code: 'ETH-AA-B1-002', tenant_name: 'ወ/ሮ ትዕግስት ኃይሌ', sub_city: 'ቦሌ', house_number: 'HN-102', historical_use: 'የድርጅት ቤት', rent_amount: 7500, work_status: 'Active' },
-        { identifier_code: 'ETH-AA-B1-003', tenant_name: 'ዶ/ር ዳዊት ወልዴ', sub_city: 'ቦሌ', house_number: 'HN-103', historical_use: 'መኖሪያ ቤት', rent_amount: 4800, work_status: 'Active' },
-        { identifier_code: 'ETH-AA-B2-015', tenant_name: 'አቶ ካሊድ ዑመር', sub_city: 'ቂርቆስ', house_number: 'HN-215', historical_use: 'የድርጅት ቤት', rent_amount: 12000, work_status: 'Active' },
-        { identifier_code: 'ETH-AA-B3-042', tenant_name: 'ወ/ሪት ሄለን ታደሰ', sub_city: 'አራዳ', house_number: 'HN-342', historical_use: 'መኖሪያ ቤት', rent_amount: 6000, work_status: 'Active' },
-        { identifier_code: 'ETH-AA-B4-088', tenant_name: 'አቶ ሳሙኤል ተፈራ', sub_city: 'ልደታ', house_number: 'HN-488', historical_use: 'የድርጅት ቤት', rent_amount: 9500, work_status: 'Active' }
-      ];
-      setReferenceData({
-        fileName: 'Master Registry (Sample Fallback)',
-        sheetName: 'Master_Registry',
-        headers: Object.keys(fallbackRows[0]),
-        rows: fallbackRows
-      });
-      setReferenceKeyCol('identifier_code');
-    }
-  };
+      };
+      setReferenceData(newRef);
 
+      let targetKey = headers[0];
+      if (headers.includes('identifier_code')) targetKey = 'identifier_code';
+      else if (headers.includes('tenantCode')) targetKey = 'tenantCode';
+      setReferenceKeyCol(targetKey);
+
+      // Filter return cols to those existing in headers
+      const validCols = selectedReturnCols.filter(c => headers.includes(c));
+      const finalCols = validCols.length > 0 ? validCols : headers.filter(h => h !== targetKey).slice(0, 6);
+      setSelectedReturnCols(finalCols);
+
+      runVlookupNow(sourceData, newRef, sourceKeyCol, targetKey, finalCols);
+    } else {
+      const newRef = {
+        fileName: 'Master Registry (Sample Benchmark)',
+        sheetName: 'Master_Registry',
+        headers: Object.keys(FALLBACK_BENCHMARK_ROWS[0]),
+        rows: FALLBACK_BENCHMARK_ROWS
+      };
+      setReferenceData(newRef);
+      setReferenceKeyCol('identifier_code');
+      runVlookupNow(sourceData, newRef, sourceKeyCol, 'identifier_code', selectedReturnCols);
+    }
+  }, [sourceData, sourceKeyCol, selectedReturnCols, runVlookupNow]);
+
+  // Initial load effect
   useEffect(() => {
     reloadReferenceFromDatabase();
 
@@ -163,44 +274,25 @@ export const VlookupView: React.FC = () => {
     return () => unsub();
   }, [referenceSourceType]);
 
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3000);
-  };
+  // Auto-run when configuration parameters change
+  useEffect(() => {
+    if (sourceData.rows.length > 0 && referenceData.rows.length > 0 && sourceKeyCol && referenceKeyCol && selectedReturnCols.length > 0) {
+      runVlookupNow();
+    }
+  }, [sourceKeyCol, referenceKeyCol, selectedReturnCols, matchMode, naHandling, customNaValue, formulaType]);
 
   // Auto-Match Key Columns intelligently
   const handleAutoDetectKeys = () => {
-    const sHeaders = sourceData.headers;
-    const rHeaders = referenceData.headers;
+    const detected = detectBestLookupPair(sourceData.headers, referenceData.headers);
+    if (detected.sourceKey) setSourceKeyCol(detected.sourceKey);
+    if (detected.refKey) setReferenceKeyCol(detected.refKey);
 
-    let bestSource = sHeaders[0] || '';
-    let bestRef = rHeaders[0] || '';
-
-    // Check code matches
-    const codeCandidates = ['tenant_code', 'tenantcode', 'identifier', 'identifier_code', 'code', 'መለያ', 'የተከራይ_መለያ'];
-    for (const sh of sHeaders) {
-      const clean = sh.toLowerCase().replace(/[\s\-_]+/g, '');
-      if (codeCandidates.some(c => clean.includes(c))) {
-        bestSource = sh;
-        break;
-      }
-    }
-
-    for (const rh of rHeaders) {
-      const clean = rh.toLowerCase().replace(/[\s\-_]+/g, '');
-      if (clean === 'identifiercode' || clean === 'tenantcode' || clean === 'መለያ') {
-        bestRef = rh;
-        break;
-      }
-    }
-
-    setSourceKeyCol(bestSource);
-    setReferenceKeyCol(bestRef);
-    showToast(`ቁልፎች በራስ-ሰር ተገናኝተዋል: "${bestSource}" ↔ "${bestRef}"`);
+    showToast(`ቁልፎች በራስ-ሰር ተገናኝተዋል: "${detected.sourceKey}" ↔ "${detected.refKey}"`);
+    runVlookupNow(sourceData, referenceData, detected.sourceKey, detected.refKey, selectedReturnCols);
   };
 
-  // Run the VLOOKUP
-  const handleExecuteVlookup = () => {
+  // Run the VLOOKUP manually
+  const handleManualExecuteVlookup = () => {
     if (!sourceKeyCol || !referenceKeyCol) {
       alert('እባክዎ ሁለቱንም የማገናኛ ቁልፎች (Lookup Keys) ይምረጡ!');
       return;
@@ -210,34 +302,9 @@ export const VlookupView: React.FC = () => {
       return;
     }
 
-    setIsExecuting(true);
-    setTimeout(() => {
-      const config: VlookupConfig = {
-        sourceFileName: sourceData.fileName,
-        referenceFileName: referenceData.fileName,
-        sourceKeyColumn: sourceKeyCol,
-        referenceKeyColumn: referenceKeyCol,
-        returnColumns: selectedReturnCols,
-        matchMode,
-        naHandling,
-        customNaValue: naHandling === 'custom' ? customNaValue : undefined,
-        formulaType,
-        referenceSheetName: referenceData.sheetName || 'Master'
-      };
-
-      const res = executeVlookup(sourceData.rows, referenceData.rows, config);
-      setResult(res);
-      setIsExecuting(false);
-      showToast(`VLOOKUP ተጠናቋል! ${res.summary.matchedCount} ተገናኝተዋል (${res.summary.matchRatePercent}%)`);
-    }, 200);
+    runVlookupNow();
+    showToast(`VLOOKUP ተከናውኗል! (${result?.summary.matchedCount ?? 0} ተገናኝተዋል)`);
   };
-
-  // Run immediately on initial load with sample preset
-  useEffect(() => {
-    if (sourceData.rows.length > 0 && referenceData.rows.length > 0 && !result) {
-      handleExecuteVlookup();
-    }
-  }, [referenceData.rows]);
 
   // Load Source File from Upload
   const handleSourceFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -245,15 +312,21 @@ export const VlookupView: React.FC = () => {
     if (!file) return;
     try {
       const parsed = await parseExcelFile(file);
-      setSourceData({
+      const newSrc = {
         fileName: file.name,
         headers: parsed.headers,
         rows: parsed.rows
-      });
-      if (parsed.headers.length > 0) {
-        setSourceKeyCol(parsed.headers[0]);
-      }
+      };
+      setSourceData(newSrc);
+
+      const detected = detectBestLookupPair(parsed.headers, referenceData.headers);
+      const sKey = detected.sourceKey || parsed.headers[0];
+      const rKey = detected.refKey || referenceKeyCol;
+      setSourceKeyCol(sKey);
+      setReferenceKeyCol(rKey);
+
       showToast(`የምንጭ ሰነድ ተጭኗል: ${file.name} (${parsed.rows.length} ረድፎች)`);
+      runVlookupNow(newSrc, referenceData, sKey, rKey, selectedReturnCols);
     } catch (err: any) {
       alert(err.message || 'ፋይሉን መጫን አልተቻለም');
     }
@@ -266,17 +339,25 @@ export const VlookupView: React.FC = () => {
     try {
       const parsed = await parseExcelFile(file);
       setReferenceSourceType('file');
-      setReferenceData({
+      const newRef = {
         fileName: file.name,
         sheetName: 'Reference',
         headers: parsed.headers,
         rows: parsed.rows
-      });
-      if (parsed.headers.length > 0) {
-        setReferenceKeyCol(parsed.headers[0]);
-        setSelectedReturnCols(parsed.headers.slice(1, 6));
-      }
+      };
+      setReferenceData(newRef);
+
+      const detected = detectBestLookupPair(sourceData.headers, parsed.headers);
+      const rKey = detected.refKey || parsed.headers[0];
+      const sKey = detected.sourceKey || sourceKeyCol;
+      setReferenceKeyCol(rKey);
+      setSourceKeyCol(sKey);
+
+      const returnOptions = parsed.headers.filter(h => h !== rKey).slice(0, 6);
+      setSelectedReturnCols(returnOptions);
+
       showToast(`የማጣቀሻ ሰነድ ተጭኗል: ${file.name} (${parsed.rows.length} ረድፎች)`);
+      runVlookupNow(sourceData, newRef, sKey, rKey, returnOptions);
     } catch (err: any) {
       alert(err.message || 'ማጣቀሻ ፋይሉን መጫን አልተቻለም');
     }
@@ -285,25 +366,51 @@ export const VlookupView: React.FC = () => {
   // Load Presets
   const loadPreset = (type: 'bank' | 'utility') => {
     if (type === 'bank') {
-      setSourceData({
+      const newSrc = {
         fileName: 'Bank_Payments_Collection.xlsx',
         headers: Object.keys(SAMPLE_BANK_PAYMENTS[0]),
         rows: SAMPLE_BANK_PAYMENTS
-      });
+      };
+      setSourceData(newSrc);
       setSourceKeyCol('Tenant_Code');
       setReferenceKeyCol('identifier_code');
-      setSelectedReturnCols(['tenant_name', 'sub_city', 'house_number', 'rent_amount']);
+      const cols = ['tenant_name', 'sub_city', 'house_number', 'historical_use', 'rent_amount'];
+      setSelectedReturnCols(cols);
+      runVlookupNow(newSrc, referenceData, 'Tenant_Code', 'identifier_code', cols);
     } else {
-      setSourceData({
+      const newSrc = {
         fileName: 'Utility_Meters_Audit.xlsx',
         headers: Object.keys(SAMPLE_UTILITY_INSPECTION[0]),
         rows: SAMPLE_UTILITY_INSPECTION
-      });
+      };
+      setSourceData(newSrc);
       setSourceKeyCol('House_No');
       setReferenceKeyCol('house_number');
-      setSelectedReturnCols(['tenant_name', 'sub_city', 'historical_use', 'rent_amount', 'work_status']);
+      const cols = ['tenant_name', 'sub_city', 'historical_use', 'rent_amount', 'work_status'];
+      setSelectedReturnCols(cols);
+      runVlookupNow(newSrc, referenceData, 'House_No', 'house_number', cols);
     }
     showToast('የሙከራ ናሙና መረጃ ተጭኗል');
+  };
+
+  // Load Uploaded File from Application Context
+  const handleLoadContextFile = () => {
+    if (!newFile) return;
+    const newSrc = {
+      fileName: newFile.fileName,
+      headers: newFile.headers,
+      rows: newFile.rows
+    };
+    setSourceData(newSrc);
+
+    const detected = detectBestLookupPair(newFile.headers, referenceData.headers);
+    const sKey = detected.sourceKey || newFile.headers[0];
+    const rKey = detected.refKey || referenceKeyCol;
+    setSourceKeyCol(sKey);
+    setReferenceKeyCol(rKey);
+
+    showToast(`የተጫነው ሰነድ ወደ ምንጭነት ተቀናብሯል: ${newFile.fileName}`);
+    runVlookupNow(newSrc, referenceData, sKey, rKey, selectedReturnCols);
   };
 
   // Copy formula to clipboard
@@ -313,6 +420,114 @@ export const VlookupView: React.FC = () => {
     setCopiedFormula(true);
     showToast('ፎርሙላው ወደ ቅንጥብ ሰሌዳ ተገልብጧል (Formula copied to clipboard!)');
     setTimeout(() => setCopiedFormula(false), 2000);
+  };
+
+  // Data Enrichment: Commit looked-up attributes into Master Database
+  const handleApplyEnrichmentToMaster = () => {
+    if (!result || result.summary.matchedCount === 0) {
+      alert('ምንም የተገናኙ መረጃዎች የሉም (No matched records to enrich).');
+      return;
+    }
+
+    const activeUser: any = user || {
+      id: 'usr-admin',
+      name: 'Tesfu Niguse (Administrator)',
+      email: 'tesfuniguse18@gmail.com',
+      role: 'Admin'
+    };
+
+    setIsEnrichingMaster(true);
+    let enrichedCount = 0;
+    const matchedRows = result.rows.filter(r => r.isMatched && r.matchedReferenceRow);
+
+    matchedRows.forEach(mr => {
+      const refKeyVal = mr.matchedReferenceRow![result.config.referenceKeyColumn];
+      if (!refKeyVal) return;
+
+      const additionalFields: Record<string, any> = {};
+      Object.entries(mr.originalRow).forEach(([k, v]) => {
+        if (k !== result.config.sourceKeyColumn && v !== undefined && v !== '') {
+          additionalFields[k] = v;
+        }
+      });
+
+      try {
+        const updated = tenantDb.updateSingleTenant(
+          String(refKeyVal),
+          { rawFields: additionalFields },
+          activeUser
+        );
+        if (updated) enrichedCount++;
+      } catch (e) {
+        // Continue for partial matches
+      }
+    });
+
+    tenantDb.addAuditLog(
+      'VLOOKUP Data Enrichment Applied',
+      `Enriched ${enrichedCount} master records with external attributes from ${sourceData.fileName}.`,
+      activeUser
+    );
+
+    setIsEnrichingMaster(false);
+    setEnrichModalOpen(false);
+    showToast(`ዳታቤዝ ተበልጽጓል! ${enrichedCount} መረጃዎች ተዘምነዋል (${enrichedCount} records enriched)`);
+    reloadReferenceFromDatabase();
+  };
+
+  // Data Enrichment: Register Unmatched Records as New Pending Tenants
+  const handleAddUnmatchedToMaster = () => {
+    if (!result || result.summary.unmatchedCount === 0) {
+      alert('ምንም ያልተገናኙ መረጃዎች የሉም (No unmatched records to register).');
+      return;
+    }
+
+    const activeUser: any = user || {
+      id: 'usr-admin',
+      name: 'Tesfu Niguse (Administrator)',
+      email: 'tesfuniguse18@gmail.com',
+      role: 'Admin'
+    };
+
+    const unmatchedRows = result.rows.filter(r => !r.isMatched);
+    let addedCount = 0;
+    const currentTenants = tenantDb.getTenants();
+
+    const newTenantsList = [...currentTenants];
+
+    unmatchedRows.forEach(ur => {
+      const code = ur.lookupKey || `T-${Date.now().toString().slice(-5)}`;
+      const name = ur.originalRow['Tenant_Name'] || ur.originalRow['Name'] || ur.originalRow['tenant_name'] || ur.originalRow['ስም'] || 'Unregistered Tenant';
+      const unit = ur.originalRow['House_No'] || ur.originalRow['Unit'] || ur.originalRow['house_number'] || ur.originalRow['ቤት ቁጥር'] || 'Pending';
+      const rent = Number(ur.originalRow['Amount_Paid'] || ur.originalRow['Rent'] || ur.originalRow['rent_amount'] || 0);
+
+      const newRecord = {
+        identifier_code: code,
+        tenant_name: name,
+        house_number: unit,
+        tenantCode: code,
+        tenantName: name,
+        unit: unit,
+        rent_amount: rent,
+        work_status: 'Pending Verification',
+        status: 'Active',
+        rawFields: ur.originalRow,
+        createdAt: new Date().toISOString()
+      };
+
+      newTenantsList.push(newRecord as any);
+      addedCount++;
+    });
+
+    tenantDb.saveTenants(newTenantsList);
+    tenantDb.addAuditLog(
+      'VLOOKUP Unmatched Added',
+      `Registered ${addedCount} unmatched records into master database from ${sourceData.fileName}.`,
+      activeUser
+    );
+
+    showToast(`አዳዲስ ${addedCount} መረጃዎች ወደ ዳታቤዝ ተመዝግበዋል!`);
+    reloadReferenceFromDatabase();
   };
 
   // Filtered Results
@@ -362,7 +577,7 @@ export const VlookupView: React.FC = () => {
             </span>
             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
               <Zap className="h-3 w-3" />
-              <span>Instant Lookup</span>
+              <span>Instant Live Match</span>
             </span>
           </div>
           <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
@@ -374,7 +589,7 @@ export const VlookupView: React.FC = () => {
         </div>
 
         {/* Quick Presets */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[11px] font-semibold text-slate-400">ናሙና ሞክር:</span>
           <button
             onClick={() => loadPreset('bank')}
@@ -390,6 +605,32 @@ export const VlookupView: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Context Uploaded File Banner */}
+      {newFile && sourceData.fileName !== newFile.fileName && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-indigo-200 bg-indigo-50/70 p-4 shadow-2xs animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-2xs">
+              <FileSpreadsheet className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="text-xs font-bold text-indigo-950">
+                Active Uploaded File Detected: <span className="font-mono text-indigo-700">{newFile.fileName}</span>
+              </div>
+              <div className="text-[11px] text-indigo-700">
+                {newFile.totalRows} rows ready for automated VLOOKUP matching against your Master Registry.
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={handleLoadContextFile}
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 transition cursor-pointer shrink-0"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-indigo-200" />
+            <span>Load Uploaded File as Source (ይህንን ተጠቀም)</span>
+          </button>
+        </div>
+      )}
 
       {/* Step 1 & 2: Two Tables Configuration Grid */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -430,13 +671,13 @@ export const VlookupView: React.FC = () => {
 
           {/* Source File Info */}
           <div className="flex items-center justify-between rounded-xl bg-slate-50 p-3 text-xs">
-            <div className="flex items-center gap-2">
-              <FileSpreadsheet className="h-4 w-4 text-indigo-600" />
+            <div className="flex items-center gap-2 min-w-0">
+              <FileSpreadsheet className="h-4 w-4 text-indigo-600 shrink-0" />
               <span className="font-semibold text-slate-800 truncate max-w-[220px]">
                 {sourceData.fileName}
               </span>
             </div>
-            <span className="font-mono text-slate-500 font-bold">
+            <span className="font-mono text-slate-500 font-bold shrink-0">
               {sourceData.rows.length.toLocaleString()} rows · {sourceData.headers.length} cols
             </span>
           </div>
@@ -519,13 +760,13 @@ export const VlookupView: React.FC = () => {
 
           {/* Reference Info */}
           <div className="flex items-center justify-between rounded-xl bg-slate-50 p-3 text-xs">
-            <div className="flex items-center gap-2">
-              <Database className="h-4 w-4 text-emerald-600" />
+            <div className="flex items-center gap-2 min-w-0">
+              <Database className="h-4 w-4 text-emerald-600 shrink-0" />
               <span className="font-semibold text-slate-800 truncate max-w-[220px]">
                 {referenceData.fileName}
               </span>
             </div>
-            <span className="font-mono text-slate-500 font-bold">
+            <span className="font-mono text-slate-500 font-bold shrink-0">
               {referenceData.rows.length.toLocaleString()} records · {referenceData.headers.length} cols
             </span>
           </div>
@@ -577,7 +818,7 @@ export const VlookupView: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={() => setSelectedReturnCols(referenceData.headers.filter(h => h !== referenceKeyCol))}
               className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 cursor-pointer"
@@ -599,7 +840,7 @@ export const VlookupView: React.FC = () => {
         </div>
 
         {/* Checkbox Pills Grid */}
-        <div className="flex flex-wrap gap-2 pt-1">
+        <div className="flex flex-wrap gap-2 pt-1 max-h-48 overflow-y-auto">
           {referenceData.headers.map(col => {
             const isSelected = selectedReturnCols.includes(col);
             const isKey = col === referenceKeyCol;
@@ -664,7 +905,7 @@ export const VlookupView: React.FC = () => {
             <p className="mt-1 text-[10px] text-slate-400">
               {matchMode === 'normalized' && 'Ignores trailing spaces, casing & leading zeros for highest match success.'}
               {matchMode === 'exact' && 'Strict byte-by-byte matching like raw Excel FALSE.'}
-              {matchMode === 'fuzzy' && 'Matches names or codes with up to 80% similarity.'}
+              {matchMode === 'fuzzy' && 'Matches names or codes with typo tolerance and title stripping.'}
             </p>
           </div>
 
@@ -706,7 +947,7 @@ export const VlookupView: React.FC = () => {
               onChange={(e) => setFormulaType(e.target.value as any)}
               className="w-full rounded-xl border border-slate-200 bg-white p-2 font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             >
-              <option value="VLOOKUP">Classic =VLOOKUP(...) with IFERROR</option>
+              <option value="VLOOKUP">Classic =VLOOKUP(...) with IFNA</option>
               <option value="XLOOKUP">Modern =XLOOKUP(...) (Office 365)</option>
               <option value="INDEX_MATCH">=INDEX(..., MATCH(...))</option>
             </select>
@@ -726,12 +967,12 @@ export const VlookupView: React.FC = () => {
           </div>
 
           <button
-            onClick={handleExecuteVlookup}
+            onClick={handleManualExecuteVlookup}
             disabled={isExecuting}
             className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 py-2.5 text-xs font-bold text-white shadow-md hover:bg-indigo-700 transition cursor-pointer disabled:opacity-50"
           >
             <RefreshCw className={`h-4 w-4 ${isExecuting ? 'animate-spin' : ''}`} />
-            <span>{isExecuting ? 'Matching...' : 'Run VLOOKUP Matcher (ቪሉካፕ አከናውን)'}</span>
+            <span>{isExecuting ? 'Matching...' : 'Re-Run VLOOKUP Matcher (ቪሉካፕ አከናውን)'}</span>
           </button>
         </div>
       </div>
@@ -813,6 +1054,15 @@ export const VlookupView: React.FC = () => {
                 <span>Export Enriched Excel (.xlsx)</span>
               </button>
 
+              <button
+                onClick={() => exportVlookupResultExcel(result, { includeFormulas: true })}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-3.5 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 transition shadow-2xs cursor-pointer"
+                title="Exports workbook with live Excel formulas and embedded Reference Sheet"
+              >
+                <Download className="h-4 w-4" />
+                <span>Export with Live Formulas</span>
+              </button>
+
               {result.summary.unmatchedCount > 0 && (
                 <button
                   onClick={() => exportVlookupResultExcel(result, { onlyUnmatched: true })}
@@ -826,11 +1076,49 @@ export const VlookupView: React.FC = () => {
             </div>
           </div>
 
+          {/* Data Enrichment Banner & Database Action Bar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50/60 p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white shadow-2xs">
+                <Sparkles className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-amber-950">
+                  Data Enrichment Engine (ዳታቤዝ ማበልጸጊያ)
+                </div>
+                <div className="text-[11px] text-amber-800">
+                  Save looked-up attributes back to the master database or register missing tenant records.
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              {result.summary.unmatchedCount > 0 && (
+                <button
+                  onClick={handleAddUnmatchedToMaster}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-rose-300 bg-white px-3.5 py-2 text-xs font-bold text-rose-700 hover:bg-rose-50 transition shadow-2xs cursor-pointer"
+                >
+                  <FilePlus className="h-4 w-4 text-rose-600" />
+                  <span>Register {result.summary.unmatchedCount} #N/A into Database</span>
+                </button>
+              )}
+
+              <button
+                onClick={() => setEnrichModalOpen(true)}
+                disabled={result.summary.matchedCount === 0}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-amber-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-amber-700 transition cursor-pointer disabled:opacity-50"
+              >
+                <Save className="h-4 w-4" />
+                <span>Enrich Master Database ({result.summary.matchedCount} Matched)</span>
+              </button>
+            </div>
+          </div>
+
           {/* Results Table Section */}
           <div className="rounded-2xl border border-slate-200 bg-white shadow-xs overflow-hidden">
             {/* Table Filter Tabs */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 p-4 bg-slate-50/50">
-              <div className="flex items-center gap-1 rounded-xl bg-slate-200/60 p-1">
+              <div className="flex items-center gap-1 rounded-xl bg-slate-200/60 p-1 flex-wrap">
                 <button
                   onClick={() => setActiveResultsTab('all')}
                   className={`rounded-lg px-3 py-1.5 text-xs font-bold transition cursor-pointer ${
@@ -907,7 +1195,7 @@ export const VlookupView: React.FC = () => {
                         {sh === result.config.sourceKeyColumn && ' (Key)'}
                       </th>
                     ))}
-                    {/* Pulled Return Columns (Highlighted in Purple/Emerald) */}
+                    {/* Pulled Return Columns (Highlighted in Emerald) */}
                     {result.config.returnColumns.map(rc => (
                       <th key={rc} className="px-3 py-2.5 bg-emerald-950 text-emerald-200 border-r border-slate-800 font-bold">
                         <span className="text-[9px] uppercase tracking-wider block text-emerald-400">VLOOKUP</span>
@@ -989,6 +1277,62 @@ export const VlookupView: React.FC = () => {
                 Displaying first 150 records of {filteredRows.length}. Download the enriched Excel file to view the full dataset.
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal for Data Enrichment to Master Database */}
+      {enrichModalOpen && result && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2 text-amber-700">
+                <Sparkles className="h-5 w-5" />
+                <h3 className="text-base font-bold text-slate-900">
+                  Enrich Master Database (ዳታቤዝ አበልጽግ)
+                </h3>
+              </div>
+              <button
+                onClick={() => setEnrichModalOpen(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="text-xs text-slate-600 space-y-2">
+              <p>
+                This action will merge the looked-up information from <strong>{sourceData.fileName}</strong> into your <strong>Master Tenant Database</strong> for all <strong>{result.summary.matchedCount} matched records</strong>.
+              </p>
+              <div className="rounded-xl bg-amber-50 p-3 border border-amber-200 text-amber-900 text-[11px] space-y-1">
+                <div className="font-bold flex items-center gap-1.5">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-amber-700" />
+                  <span>Enrichment Highlights:</span>
+                </div>
+                <ul className="list-disc pl-4 space-y-0.5">
+                  <li>Attributes from source rows will be saved to tenant records.</li>
+                  <li>An audit log record will be generated with timestamp and user tag.</li>
+                  <li>Existing primary identifiers remain preserved.</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-3">
+              <button
+                onClick={() => setEnrichModalOpen(false)}
+                className="rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleApplyEnrichmentToMaster}
+                disabled={isEnrichingMaster}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-amber-600 px-5 py-2 text-xs font-bold text-white shadow-xs hover:bg-amber-700 transition cursor-pointer disabled:opacity-50"
+              >
+                {isEnrichingMaster ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                <span>{isEnrichingMaster ? 'Enriching...' : 'Confirm & Apply Enrichment'}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

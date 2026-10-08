@@ -54,4 +54,5 @@ export interface VlookupExecutionResult {
   rows: VlookupRowResult[];
   summary: VlookupSummaryStats;
   sampleFormula: string;
+  referenceRows?: Record<string, any>[];
 }

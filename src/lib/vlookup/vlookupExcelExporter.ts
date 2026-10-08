@@ -6,13 +6,16 @@ import { VlookupExecutionResult } from '@/src/types/vlookup';
  */
 export function exportVlookupResultExcel(
   result: VlookupExecutionResult,
-  options: { includeFormulas?: boolean; onlyUnmatched?: boolean } = {}
+  options: { includeFormulas?: boolean; onlyUnmatched?: boolean; onlyDiscrepancies?: boolean } = {}
 ) {
   const wb = XLSX.utils.book_new();
 
-  const rowsToExport = options.onlyUnmatched
-    ? result.rows.filter(r => !r.isMatched)
-    : result.rows;
+  let rowsToExport = result.rows;
+  if (options.onlyUnmatched) {
+    rowsToExport = result.rows.filter(r => !r.isMatched);
+  } else if (options.onlyDiscrepancies) {
+    rowsToExport = result.rows.filter(r => r.hasDiscrepancies);
+  }
 
   // Build Sheet 1 Data Array
   const sheetData: any[][] = [];
@@ -48,10 +51,36 @@ export function exportVlookupResultExcel(
   }));
   ws['!cols'] = colWidths;
 
-  const sheetName = options.onlyUnmatched ? 'Unmatched_Exceptions' : 'VLOOKUP_Merged';
+  const sheetName = options.onlyUnmatched
+    ? 'Unmatched_Exceptions'
+    : options.onlyDiscrepancies
+    ? 'Discrepancies_Report'
+    : 'VLOOKUP_Merged';
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
 
-  // Sheet 2: Audit & Summary Sheet
+  // Embed Reference Table Sheet (Crucial so Excel formulas and references evaluate properly in Excel!)
+  if (result.referenceRows && result.referenceRows.length > 0) {
+    const refSheetName = result.config.referenceSheetName || 'Master_Registry';
+    const refHeaders = result.referenceHeaders;
+    const refSheetData: any[][] = [refHeaders];
+
+    result.referenceRows.forEach(r => {
+      const rowVals: any[] = [];
+      refHeaders.forEach(h => {
+        rowVals.push(r[h] ?? '');
+      });
+      refSheetData.push(rowVals);
+    });
+
+    const wsRef = XLSX.utils.aoa_to_sheet(refSheetData);
+    const refColWidths = refHeaders.map(h => ({
+      wch: Math.max(h.length + 4, 14)
+    }));
+    wsRef['!cols'] = refColWidths;
+    XLSX.utils.book_append_sheet(wb, wsRef, refSheetName);
+  }
+
+  // Sheet 3: Audit & Summary Sheet
   const summaryData: any[][] = [
     ['VLOOKUP AUTOMATOR AUDIT REPORT · የቪሉካፕ ሪፖርት'],
     ['Generated Date', new Date().toLocaleString()],
@@ -62,6 +91,7 @@ export function exportVlookupResultExcel(
     ['Match Mode', result.config.matchMode.toUpperCase()],
     ['Formula Style', result.config.formulaType],
     ['Sample Excel Formula', result.sampleFormula],
+    ['Formulas Embedded', options.includeFormulas ? 'YES' : 'NO (Values Static)'],
     [],
     ['METRICS', 'VALUE'],
     ['Total Records Processed', result.summary.totalRows],
@@ -88,6 +118,10 @@ export function exportVlookupResultExcel(
   const dateStr = new Date().toISOString().slice(0, 10);
   const fileName = options.onlyUnmatched
     ? `VLOOKUP_Unmatched_Exceptions_${dateStr}.xlsx`
+    : options.onlyDiscrepancies
+    ? `VLOOKUP_Discrepancies_${dateStr}.xlsx`
+    : options.includeFormulas
+    ? `VLOOKUP_Enriched_With_Formulas_${dateStr}.xlsx`
     : `VLOOKUP_Merged_Catalog_${dateStr}.xlsx`;
 
   XLSX.writeFile(wb, fileName);
